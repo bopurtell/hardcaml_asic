@@ -1,12 +1,18 @@
 # hardcaml_asic phase plan
 
-**Current queue, adopted 2026-10-24: make the ASIC flow usable for
-`hardcaml_protemu`'s SRAM-backed implementation and resource studies.**
+**Current queue, adopted 2026-10-24; library/example scope clarified 2026-11-05:
+make the ASIC flow independently usable for SRAM-backed implementation and resource
+studies. Protemu adoption remains a separate consumer track.**
 
 This is the only active implementation queue. [Architecture](architecture.md)
 owns boundaries; the [memory contract](reference/program-memory-contract.md)
 owns RAM semantics. Detailed designs and evidence belong in `development/`,
 `sram/`, and `evidence/`, linked from the relevant item here.
+
+For replacement-session orientation across ASIC, Workbench and the example, see
+the [cross-repository checkpoint](../../hardcaml_workbench/docs/session_checkpoint.md).
+This file remains the only active ASIC queue; the checkpoint distinguishes bounded
+PT.0–PT.8 completion, separate PT.3 adoption and paused deployment acceptance.
 
 **Revised direction, 2026-10-24:** ongoing SRAM acceptance belongs in
 `hardcaml_asic_example` through public APIs. The old Verilog probe remains a
@@ -70,14 +76,15 @@ named owner and does not reuse that repository's phase IDs.
 | 6 | PT.5 — Requested-versus-realized resource checks | PT.2, PT.4 | Complete in supported retained-evidence scope: reconciliation, physical measurements and sampled resource timing |
 | 7 | PT.6 — Workbench resource inspector | PT.4; PT.5 for realized evidence | Delivered: bounded Resources inspector, exact sources, qualified comparison and declared controls |
 | 8 | PT.7 — Synchronizer/reset-aware timing declarations | Endpoint reference design; independent example acceptance | Complete in agreed bounded library/example synthesis scope; physical qualification tracked separately |
-| 9 | PT.8 — Reproducible design-variant comparisons | PT.4–PT.7 for generic infrastructure; PT.3 for consumer selection | Bounded library/example declarations and checked pair comparison accepted; workload/consumer selection pending |
+| 9 | PT.8 — Reproducible design-variant comparisons | PT.4–PT.7; independent-example workload acceptance | Complete in bounded library/example scope: declarations, verified workload/results, comparisons and example tradeoff; Protemu selection separate/pending |
 
 This is the preferred execution order, not a requirement to serialize design
 work. PT.4 can begin against existing flop records; PT.7 can begin independently.
 PT.3 can establish functional integration before PT.7, but final Protemu physical
 selection requires reviewed timing constraints. Workbench is optional for all
-headless acceptance. Serialize Dune builds with `-j 20` and keep external-tool
-resource use within the same shared budget.
+headless acceptance. Global job ceiling is20 including nested builds and tools;
+every Dune invocation has an explicit limit. Current slices use at most six jobs
+per agent and the shared checkout locks documented in their implementation plan.
 
 ## PT.0 — Repair and refresh SRAM feasibility evidence
 
@@ -479,7 +486,10 @@ Generic library/example first slice accepted 2026-10-29:
 Hardware assignments remain distinct from resource policy and existing flow
 profiles. New declarations plus read-only evidence comparisons do not establish
 Protemu parameter conformance, workload equivalence or final configuration selection.
-Consumer-specific PT.8a–c obligations below stay pending independently.
+Library/example workload implementation follows the
+[bounded workload plan](development/pt8-workload-plan.md). Generic infrastructure
+plus independent-example acceptance can close PT.8 library scope. Protemu adoption
+is not a prerequisite; consumer application/selection stays pending independently.
 
 - [x] **Library/example foundation:** checked typed `Hardware_variant`,
   `Project.of_variant` factory association, optional identity-covered manifest metadata
@@ -489,9 +499,12 @@ Consumer-specific PT.8a–c obligations below stay pending independently.
   execution targets, declared axis, exact source identities/differences/outcomes,
   per-metric comparable/confounded/unavailable reasons and eligible right-minus-left
   deltas. Existing parsers/source replay are reused; no winner or tool execution.
-- [ ] **Workload/result contract:** verified logical workload, exact variant-specific
-  artifacts and producer/measurement semantics for firmware size, fetch counts,
-  latency and throughput. These metrics remain unavailable in comparison schema1.
+- [x] **Workload/result contract:** strict retained logical workload, exact variant-specific
+  artifacts, bundle/hardware/simulation binding and independent trace replay for the
+  bounded 256×16 latency-one 1RW protocol. Cycles, accepted reads/writes/operations,
+  defined observations, read latency and operation/cycle throughput are verified.
+  Firmware size/fetch counts remain unsupported for this non-firmware workload;
+  historical/unsupplied results remain unavailable rather than inferred.
 
 Corrected installed provider `f205e0d66f8d4f2b8d1e5f098171bb21`, source snapshot
 `1f5ac45882b29c7d577937b4ba2eb8960a899bd2221eaae5b3e115a111de3213`.
@@ -505,8 +518,43 @@ archive validation. Existing named-macro preparation remains unsupported.
 [variant review](development/pt8-variant-review.md),
 [comparison review](development/pt8-comparison-review.md).
 
-**Owners: Protemu for variants/workloads; ASIC for identities/results;
-Workbench for optional launch and comparison views.**
+**Owners: ASIC for generic identities/results/comparison; independent example for
+workload acceptance and workload-scoped evaluation.**
+
+- [x] **Example workload acceptance:** fresh matched 256×16 latency-one explicit
+  Flops/Exact SRAM functional evidence, trace-checked counters and latency/throughput,
+  controlled comparisons and meaningful association/rebinding/partial negatives.
+- [x] **Example tradeoff assessment:** evidence-based choice or tradeoff for this
+  workload, with unmatched synthesis/physical evidence and unavailable claims explicit.
+
+**Library exit:** verified workload/result infrastructure, workload-linked functional/
+cycle measurements, controlled actual-variant comparison and independently reviewed
+example tradeoff acceptance. Existing named-flow profiles/services are reused.
+No universal winner, UI, scheduler or new SRAM feasibility gate is required.
+
+**Library/example exit accepted 2026-11-05.**
+[Workload closeout](development/pt8-workload-closeout.md),
+[installed example](../../hardcaml_asic_example/docs/pt8_workloads_final.md),
+[result review](development/pt8-workload-result-review.md) and
+[comparison review](development/pt8-workload-comparison-review.md) record actual
+scope and corrected defects. Reader generation `1d3e1195ba4f45fb93eb986ca23cfb75`,
+captured source `86d7b71e7992429cf84b239ae70fe7fd3fbbd2b449227760ef64e0dc57e2d466`,
+is distinct from simulation producer `59aeb673765d4ef5b9308eb611f8cf0f`.
+Both actual emitted implementations pass 1307 cycles, latency1 and787/1307
+operations/cycle; seven workload rows have zero deltas. Ignored workload/address
+executions fail functionally and expose no performance values. No new synthesis,
+P&R or STA: retained historical SRAM physical evidence is qualified context, not
+a matched physical A/B. Structural portability/integration tradeoffs are assessed;
+no physical area or speed winner is claimed. Independent review corrected a
+directory-read descriptor leak, late raw-source/discovery generation gaps and an
+auxiliary alias compatibility regression. No remaining blocker in this bounded
+scope; sequential audit/ABA and producer-authentication limits remain explicit.
+
+### Separate Protemu application/selection track (pending)
+
+Depends on PT.3 adoption and consumer-specific review; only claims about Protemu
+correctness or its best configuration require this work. These obligations do not
+block completion of the PT.8 library/example scope above.
 
 - [ ] **PT.8a — Variant declarations.** Parameterize supported memory shapes,
   packing/encoding, FIFO depths, engine configuration and clocks in Protemu.
@@ -521,7 +569,7 @@ Workbench for optional launch and comparison views.**
   record resource/timing margin and choose the Protemu configuration. Rerun
   affected regressions and preserve reproducible inputs/results for that choice.
 
-**Exit:** Protemu's P5 studies can compare explicit flops and supported SRAM
+**Consumer exit:** Protemu's P5 studies can compare explicit flops and supported SRAM
 configurations without ad hoc edits or ambiguous provenance. Existing named-flow
 profiles are reused rather than rebuilt as a second experiment system.
 

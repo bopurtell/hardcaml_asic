@@ -1,0 +1,46 @@
+(executable
+ (name probe)
+ (modules probe)
+ (libraries hardcaml_asic.execution yojson))
+
+(rule
+ (targets fence.so)
+ (deps fence.c)
+ (action (run cc -shared -fPIC -o %{targets} %{dep:fence.c} -ldl)))
+
+(rule
+ (alias runtest)
+ (deps review.py ../workload_comparison/check.py ../check_resource_evidence.py fence.so)
+ (action (run python3 -B %{dep:review.py}
+   --probe %{exe:probe.exe} --variant %{exe:../workload_result/consumer.exe}
+   --fence %{dep:fence.so})))
+
+(rule
+ (alias corrected_review)
+ (deps corrected_review.py review.py ../workload_comparison/check.py
+   ../check_resource_evidence.py fence.so)
+ (action (run python3 -B %{dep:corrected_review.py}
+   --probe %{exe:probe.exe} --variant %{exe:../workload_result/consumer.exe}
+   --fence %{dep:fence.so})))
+
+(rule
+ (alias discovery_review)
+ (deps discovery_review.py ../workload_comparison/check.py ../check_resource_evidence.py fence.so)
+ (action (run python3 -B %{dep:discovery_review.py}
+   --probe %{exe:probe.exe} --variant %{exe:../workload_result/consumer.exe}
+   --fence %{dep:fence.so})))
+
+(rule
+ (alias corrected_discovery)
+ (deps corrected_discovery.py discovery_review.py ../workload_comparison/check.py
+   ../check_resource_evidence.py fence.so)
+ (action (run python3 -B %{dep:corrected_discovery.py}
+   --probe %{exe:probe.exe} --variant %{exe:../workload_result/consumer.exe}
+   --fence %{dep:fence.so})))
+
+(rule
+ (alias alias_review)
+ (deps alias_review.py ../workload_comparison/check.py ../check_resource_evidence.py fence.so)
+ (action (run python3 -B %{dep:alias_review.py}
+   --probe %{exe:probe.exe} --variant %{exe:../workload_result/consumer.exe}
+   --fence %{dep:fence.so})))

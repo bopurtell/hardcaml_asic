@@ -1,0 +1,13 @@
+(executable
+ (name review_api)
+ (libraries hardcaml_asic.execution hardcaml_asic core))
+
+(rule
+ (targets fence.so)
+ (deps fence.c)
+ (action (run cc -shared -fPIC -o %{targets} %{dep:fence.c} -ldl)))
+
+(rule
+ (alias runtest)
+ (deps probes.py fence.so)
+ (action (run python3 -B %{dep:probes.py} --api %{exe:review_api.exe} --fence %{dep:fence.so})))

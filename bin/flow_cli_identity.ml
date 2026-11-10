@@ -20,7 +20,12 @@ let describe () =
       "results_defaults",`Assoc ["root",`String "<caller-cwd>/_flow_results";"operations",`String "<results-root>/operations";
         "runs",`String "<results-root>/runs";"stage_observations",`String "<resolved-workspace-parent>/observations"];
       "capabilities",`Assoc [
-         "namedflow1",`Bool true;
+           "namedflow1",`Bool true;
+           "workload_inspection1",`Assoc ["schema_version",`Int 1;"read_only",`Bool true;
+             "max_response_bytes",`Int (1024*1024);"result_contract",`String "hardcaml-asic.workload-result"];
+          "workload_comparison1",`Assoc ["schema_version",`Int 1;"read_only",`Bool true;
+            "result_contract",`String "hardcaml-asic.workload-result";
+            "options",strings ["left-workload";"right-workload"]];
          "variant_comparison1",`Assoc ["schema_version",`Int 1;"read_only",`Bool true;
            "max_response_bytes",`Int (1024*1024);"target_kinds",strings ["bundle";"coarse_run";"execution"];
            "axes",strings ["hardware";"resource_policy";"flow_configuration";"descriptive"]];
@@ -45,7 +50,7 @@ let describe () =
              "outer_inventory",`Assoc ["max_sources",`Int 4096;"max_source_bytes",`Int (128*1024*1024);"max_total_bytes",`Int (512*1024*1024)]];
         "timing_stage1",`Bool true;
         "json_commands",strings ["preflight";"run";"postcheck";"collect";"report";"inspect";"execute";"archive";"stages";"checkpoint-inspect";
-              "observation describe";"observation inspect";"observation read-updates";"observation watch";"finalize";"finalization-inspect";"preparation-inspect";"resources-inspect";"resource-inspect";"timing-intent-inspect";"compare"];
+               "observation describe";"observation inspect";"observation read-updates";"observation watch";"finalize";"finalization-inspect";"preparation-inspect";"resources-inspect";"resource-inspect";"timing-intent-inspect";"compare";"workload-inspect"];
         "json_lines_commands",strings ["stages";"finalize";"observation watch"];
         "observation_watch",`Assoc ["incremental",`Bool true;"interval_seconds",`Float 0.5;
           "envelopes",strings ["updates";"status"];"records_flushed",`Bool true;

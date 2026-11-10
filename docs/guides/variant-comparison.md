@@ -137,8 +137,157 @@ Exact256 bundle emission is supported; **Exact macro `Methodology_plan.prepare`
 remains a pre-existing unsupported named-macro boundary**. This feature does not
 enable it. Historical records are never retrofitted with hardware metadata.
 
-Firmware size, fetch count, latency/throughput and common-workload evidence remain
-unavailable until a verified workload-result contract exists. There is no automatic
-winner, experiment scheduler, Protemu configuration selection or UI integration.
+Firmware size and fetch count remain unsupported for the memory protocol below.
+There is no automatic winner, experiment scheduler or Protemu configuration selection.
+The provider remains headless; the separately delivered
+[Workbench integration](../../../hardcaml_workbench/docs/pt8_workloads.md) consumes
+its public results and comparison decisions.
 The [PT.8 queue](../phase_plan.md#pt8--reproducible-design-variant-comparisons)
 owns those remaining consumer/workload obligations.
+
+## Explicit checked workload results
+
+### Terminology: stimulus, workload, test and suite
+
+**Stimulus is a component of a workload, not the entire workload.** In this guide,
+a workload contract describes a scenario and how its execution is evaluated:
+
+```text
+Workload contract
+├── Stimulus: operations, transactions and logical input data
+├── Execution assumptions/rules: initial state, ordering, timing and handshakes
+├── Completion rules: when the scenario ends
+├── Expected behavior: which observations are defined and what must hold
+└── Measurement rules: what to count and over which sample window
+```
+
+These are logical responsibilities, not required software classes or a promise
+that the current codec can represent arbitrary scenarios. For the supported
+memory protocol some rules are fixed by the versioned protocol; operations,
+expected observations, seed declaration and measurement window are explicit.
+
+For a UVM reader, sequence items are the raw stimulus; a sequence/virtual sequence
+is closest to the traffic/scenario portion. The broader workload contract also
+specifies assumptions, expected behavior and measurement rules that UVM might
+distribute across test configuration, assertions, a reference model, scoreboard
+and monitors. Reusable drivers/checkers implement that contract; they do not have
+to be physically contained in one workload object. DUT variant, concrete artifacts,
+verification environment and execution attempt remain separately associated facts.
+
+A **test** applies checks to an execution. A **case** is a runnable configured
+test/scenario; a **suite** organizes selectable cases; an **attempt** is one actual
+execution. A case can conceptually consume one or more workloads, and a workload
+can be executed on one candidate or reused across several. Those relationships
+are not a requirement to compare multiple designs every time a workload runs.
+
+Current PT.8 cases `flops256` and `exact256` each execute the same single fixed
+logical memory workload against their respective implementation. Its fill/read/
+hold/boundary phases are part of that one workload. Arbitrary user-authored
+composition of N workloads per case is **not implemented**. Workbench uses the
+existing test-suite/case runner to execute these cases; workload verification is
+an additional result contract, not a second test runner.
+
+Logical workload identity stays separate from variant-specific stimulus/image
+bytes, driver/model/tool artifacts, actual hardware/bundle and simulation attempt.
+The same logical job can have different concrete encodings. A label, equal input
+bytes or a successful provider process alone establishes neither equivalence nor
+functional success. Exact concrete evidence is retained and replay-checked.
+
+### Inspect and compare explicit evidence
+
+Attach either or both explicit version1 memory workload result files:
+
+```sh
+hardcaml-asic-flow compare \
+  --left-kind bundle --left "$FLOPS_BUNDLE" --left-workload "$FLOPS_RESULT" \
+  --right-kind bundle --right "$SRAM_BUNDLE" --right-workload "$SRAM_RESULT" \
+  --axis resource_policy --json
+```
+
+```ocaml
+Hardcaml_asic_execution.Variant_comparison.inspect
+  ~left:(Bundle flops_bundle) ~right:(Bundle sram_bundle)
+  ~axis:Resource_policy ~left_workload:flops_result ~right_workload:sram_result ()
+```
+
+Both optional arguments precede the final unit. Existing calls and the
+`variant_comparison1` capability/schema/policy remain compatible. Additional
+capability `workload_comparison1` advertises the explicit options. Omitted paths
+preserve the old envelope; one supplied side exposes checked evidence but cannot
+produce a two-sided workload delta. Wrong target associations are errors, including
+valid workload evidence for a different verified bundle. Hardware variant identity
+must be present and match exactly. The simulation is associated with the verified
+bundle and hardware, **not** with a coarse-run or execution attempt merely because
+they share that bundle. Its own simulation attempt remains in `side.workload.binding`.
+
+Public `hardcaml-asic-flow workload-inspect RESULT --json` (and
+`Workload_result.inspect`) additionally exposes `binding.bundle`, the absolute
+canonical selected root checked by the bundle verifier. Workbench can capture
+this exact locator directly. The existing `binding.bundle_identity` stays the
+identity; the locator is descriptive verified-root context, not another identity
+or an authentication claim. It is additive to the inspection projection only:
+retained result/simulation records and the FS2 result-reference artifact schema
+are unchanged. Older cached/synthetic projections may omit it; consumers retain
+their explicit-path fallback. Fresh inspection/source digests cover the locator.
+
+`Workload_result` checks the bounded `memory-1rw-latency1-v1` protocol: 256×16,
+undefined initial RAM, one-edge read latency, explicit operations and before/after
+observations, and a nonempty half-open measurement window. It independently replays
+the expected memory semantics and trace and checks every stored counter. See the
+[frozen wire/API contract](../development/pt8-workload-handoff.md). Simulation process
+completion and functional pass are distinct. Failed, partial, interrupted or
+functionally failing records stay readable when internally consistent, with
+unavailable performance values and no deltas.
+
+The workload metric family requires equal checked logical workload identity
+(including seed, operations, expected observations and window), adapter, clock,
+measurement definition, tool artifact hashes, RTL mode and functional model
+semantics. Stage, scope/window, units, classification, quantity and each metric
+definition also must match. Missing context is unavailable; differing context is
+confounded. These controls are specific to functional simulation: physical library,
+RC and flow controls continue to govern physical metrics independently.
+
+Flops and SRAM may have different actual RTL and concrete model bytes while using
+the same supported adapter/interface semantics and functional model definition.
+Those bytes are never substituted for one another: each side retains actual
+artifact references, source hashes and simulation identity in workload provenance.
+A different declared semantic model context cannot yield a delta; concrete model
+file sets can differ under that common context. The shared
+model declaration is checked retained producer context, not independent proof that
+arbitrary model implementations satisfy their declared semantics.
+
+Cycles, reads, writes, operations, defined observations and read latency use exact
+integer deltas. Throughput is operations/cycle: both source numerator/denominator
+pairs remain visible and `right_minus_left_ratio` gives the reduced exact rational
+delta alongside the numeric `right_minus_left`. Equal Flops/SRAM cycle counts and
+throughput are reported as zero deltas, not as a speedup. Neither host runtime nor
+a clock-projected physical rate is measured hardware speed. This does not establish
+matched physical area/timing or firmware size/fetch evidence.
+
+Every admitted raw workload source, including the raw result and simulation JSON,
+stimulus, trace, RTL, model, testbench and tool artifacts, is digest-bound. The
+comparison replays both existing target generations and `Workload_result.recheck`
+before a final bounded raw-byte audit of their combined consulted source closure.
+When collection discovers postchecks, the fence also checks `checks/` existence,
+resolved location, child membership and `postcheck.json` presence, including an
+initially absent or empty directory. Directory enumeration is limited to8192 child
+entries; the final raw union is limited to16384 paths/2GiB, with existing reader
+limits still applying. Permitted target/auxiliary aliases retain their existing
+admission semantics and have their canonical resolutions pinned and checked;
+workload-relative references retain descriptor-bound no-follow admission. No deep
+source replay follows the final audit. This sequential fence detects the tested
+persistent changes during opposite-side validation; it is not an atomic cross-file
+snapshot or an adversarial ABA-history detector.
+With a workload attached, the side `source_digest` binds both target
+and workload digests; the nested workload digest remains independently visible.
+Changing only JSON whitespace also changes the generation. Source and descriptor
+admission gates remain in force. The complete comparison still rejects above1MiB;
+it never truncates evidence. Hash/replay consistency is not authenticated execution,
+semantic source-use proof, adversarial ABA-history detection, timing/SDF validation
+or P6 compiled-source consistency.
+
+The [workload closeout](../development/pt8-workload-closeout.md) records final
+installed example acceptance and independent review. PT.8 library/example scope
+is complete for this supported protocol; Protemu application/selection remains
+separate. The matched example reports equal cycle latency/throughput and an
+implementation/integration tradeoff, with physical area/speed deltas unavailable.

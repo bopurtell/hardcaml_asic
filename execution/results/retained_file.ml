@@ -4,7 +4,12 @@ let exists path = try ignore (Unix.lstat path);true
 let read ?(max_bytes=32*1024*1024) path =
   if max_bytes<0 || String.contains path '\000' then invalid_arg "invalid retained metadata admission";
   let fd=open_readonly path in
-  let ic=Unix.in_channel_of_descr fd in
+  let ic=try Unix.in_channel_of_descr fd with exn ->
+    let backtrace=Printexc.get_raw_backtrace () in
+    (* Until conversion succeeds the raw descriptor is ours. Afterwards only
+       channel cleanup below owns it; closing both would risk descriptor reuse. *)
+    (try Unix.close fd with Unix.Unix_error _ -> ());
+    Printexc.raise_with_backtrace exn backtrace in
   Fun.protect ~finally:(fun () -> close_in_noerr ic) (fun () ->
     let before=Unix.fstat fd in
     if before.st_kind<>Unix.S_REG then invalid_arg ("retained source must be a regular file: "^path);

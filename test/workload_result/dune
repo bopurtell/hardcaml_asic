@@ -1,0 +1,24 @@
+(executable
+ (name consumer)
+ (modules consumer)
+ (libraries hardcaml_asic.execution core yojson))
+
+(rule
+ (alias runtest)
+ (deps check.py)
+ (action (run python3 -B %{dep:check.py} --consumer %{exe:consumer.exe})))
+
+(executable
+ (name fd_regression)
+ (modules fd_regression)
+ (libraries hardcaml_asic.execution unix yojson))
+
+(rule
+ (alias fd_regression)
+ (deps directory_regression.py)
+ (action (run python3 -B %{dep:directory_regression.py}
+   --consumer %{exe:consumer.exe} --probe %{exe:fd_regression.exe})))
+
+(alias
+ (name runtest)
+ (deps (alias fd_regression)))

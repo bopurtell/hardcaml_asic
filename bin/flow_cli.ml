@@ -9,6 +9,7 @@ let exclusive a keys required =
 let choice a k choices = Option.iter (fun v -> if not (List.mem v choices) then error ("invalid --"^k^": "^v)) (get a k)
 let validate a =
   let c=a.command in
+  if c="workload-inspect" && String.trim (value a "result")="" then error "expected a nonempty result path";
   if c="compare" then (
     require a ["left-kind";"left";"right-kind";"right";"axis"];
     List.iter (fun key -> choice a key ["bundle";"coarse_run";"execution"]) ["left-kind";"right-kind"];
@@ -68,7 +69,7 @@ let resolve a =
   let c=a.command in
   let paths=["left";"right";"target";"bundle";"run-dir";"runs";"results-root";"output";"archive";"testbench";"replay-trace";"dependency-lock";"toolchain";"support-tools";"pdk-root";
     "workspace";"checkpoint-store";"checkpoint";"plan";"methodology-plan";"observation-store";"execution";"operation-store";"attempt";"compatibility"] in
-  List.iter (fun k -> Option.iter (fun v -> set a k (Flow_cli_paths.absolute (if v="" then "." else v))) (get a k)) paths;
+   List.iter (fun k -> Option.iter (fun v -> set a k (Flow_cli_paths.absolute (if v="" then "." else v))) (get a k)) ("result"::paths);
   List.iter (fun k -> Option.iter (fun v -> set a k (Flow_cli_paths.lexical (if v="" then "." else v))) (get a k)) ["python";"precheck-python"];
   let root=match get a "toolchain" with Some p -> Some p | None ->
     (match Sys.getenv_opt "TOOLCHAIN" with Some s when s<>"" || c="provision" -> Some (Flow_cli_paths.absolute s) | _ -> None) in
@@ -125,8 +126,9 @@ let route a request =
       (if c="run" then ["--public-cli4"] else []) @ switches ["native";"force"] @ presentation
      | "postcheck" -> c,["--public-cli4"] @ resources @ fields ["run-dir";"support-tools";"pdk-root";"precheck-python";"testbench";"testbench-top";"replay-trace";"timeout"] @ presentation
     | "collect" -> c,fields ["run-dir"] @ (if flag a "stdout" then ["--stdout"] else fields ["output"]) @ presentation
-     | "report" -> c,fields ["target"] @ presentation
-     | "compare" -> c,fields ["left-kind";"left";"right-kind";"right";"axis"] @ presentation
+      | "report" -> c,fields ["target"] @ presentation
+      | "workload-inspect" -> c,[value a "result"] @ presentation
+     | "compare" -> c,fields ["left-kind";"left";"right-kind";"right";"axis";"left-workload";"right-workload"] @ presentation
        | "resources-inspect" -> c,fields ["run-dir"] @ presentation
        | "timing-intent-inspect" -> c,[value a "target"] @ fields ["kind"] @ presentation
       | "resource-inspect" -> c,fields ["target";"kind";"query";"resource-id";"section";"expected-digest";"artifact-id";"offset";"limit"] @ presentation

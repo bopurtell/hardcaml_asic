@@ -1,0 +1,22 @@
+(executable
+ (name consumer)
+ (libraries hardcaml_asic.execution yojson))
+
+(rule
+ (targets fence.so)
+ (deps fence.c)
+ (action (run cc -shared -fPIC -o %{targets} %{dep:fence.c} -ldl)))
+
+(rule
+ (alias runtest)
+ (deps check.py fence.so ../../bin/experimental_compare.exe)
+ (action (run python3 -B %{dep:check.py}
+   --consumer %{exe:consumer.exe} --cli %{exe:../../bin/flow_cli.exe}
+   --variant %{exe:../workload_result/consumer.exe} --fence %{dep:fence.so})))
+
+(rule
+ (alias runtest)
+ (deps late_fence.py check.py fence.so ../check_resource_evidence.py ../check_stage_report.py)
+ (action (run python3 -B %{dep:late_fence.py}
+   --consumer %{exe:consumer.exe} --variant %{exe:../workload_result/consumer.exe}
+   --fence %{dep:fence.so})))

@@ -4,7 +4,7 @@ type t = { command : string; query : string; values : (string,string) Hashtbl.t;
 exception Usage of string
 let error s = raise (Usage s)
 let commands = ["provision";"preflight";"run";"postcheck";"collect";"report";"archive";
-  "execute";"stages";"finalize";"finalization-inspect";"checkpoint-inspect";"observation";"inspect";"preparation-inspect";"resources-inspect";"resource-inspect";"timing-intent-inspect";"compare"]
+  "execute";"stages";"finalize";"finalization-inspect";"checkpoint-inspect";"observation";"inspect";"preparation-inspect";"resources-inspect";"resource-inspect";"timing-intent-inspect";"compare";"workload-inspect"]
 let tools = ["toolchain";"support-tools";"pdk-root"]
 let identity = ["dependency-lock";"waiver"]
 let grammar command query = match command with
@@ -15,7 +15,8 @@ let grammar command query = match command with
   | "postcheck" -> tools @ identity @ ["precheck-python";"testbench";"testbench-top";"replay-trace";"timeout"], [], "run-dir"
   | "collect" -> ["output"], ["stdout"], "run-dir"
   | "report" -> [], [], "target"
-  | "compare" -> ["left-kind";"left";"right-kind";"right";"axis"], [], ""
+  | "workload-inspect" -> [], [], "result"
+  | "compare" -> ["left-kind";"left";"right-kind";"right";"axis";"left-workload";"right-workload"], [], ""
   | "resources-inspect" -> [], [], "run-dir"
   | "timing-intent-inspect" -> ["kind"], [], "target"
   | "resource-inspect" -> ["kind";"query";"resource-id";"section";"expected-digest";"artifact-id";"offset";"limit"], [], "target"
@@ -52,11 +53,12 @@ let help command query =
   else (let values,flags,pos = grammar command query in
     if pos<>"" then Printf.printf "required argument: %s\n" (if command="report" then "TARGET" else pos);
     if command="report" then print_endline "TARGET: coarse run, stage checkpoint, stage workspace, or explicit execution JSON";
-     if command="compare" then print_endline "Read-only pair comparison: explicit --left-kind/--left and --right-kind/--right, required --axis hardware|resource_policy|flow_configuration|descriptive. Whole JSON <=1MiB; no pagination. Exit0 is readability, not acceptance or a winner.";
+     if command="compare" then print_endline "Read-only pair comparison: explicit --left-kind/--left and --right-kind/--right, required --axis hardware|resource_policy|flow_configuration|descriptive. Optional --left-workload PATH and --right-workload PATH bind checked workload results to verified bundle/hardware identities. Whole JSON <=1MiB; no pagination. Exit0 is readability, not acceptance or a winner.";
      if command="inspect" then print_endline "Read-only retained evidence: --domain timing|clocks|physical|routing --stage synthesis|floorplan|placement|cts|routing|timing|signoff. --expected-digest alone pins a timing_analysis1 source; with --row-id it pins the index for detail. JSON contract: hardcaml-asic.inspection schema 1.";
      if command="preparation-inspect" then print_endline "Read-only retained Elaborate & Resolve Resources preparation. --current-identity compares an explicit preparation identity; absent comparison does not reconstruct current sources. JSON contract: hardcaml-asic.preparation-inspection schema 1.";
      if command="timing-intent-inspect" then print_endline "Read-only timing evidence. --kind execution requires an exact named execution JSON; --kind coarse_run selects ordinary linked synthesis evidence; default standalone preserves schema-1/2 audit inspection. Named evidence is path-bound; named archives/relocation unsupported. Exhaustive path-effect coverage remains unavailable.";
-    List.iter (fun k -> Printf.printf "  --%s VALUE\n" k) values;
+     if command="workload-inspect" then print_endline "Read-only public Workload_result.inspect of an explicit result.json. JSON <=1MiB. Exit0 means readable, including functional failure or partial evidence; exit2 means invalid evidence or usage.";
+     List.iter (fun k -> Printf.printf "  --%s VALUE\n" k) values;
     List.iter (fun k -> Printf.printf "  --%s\n" k) flags);
   print_endline "-h, --help  show help\n--json  machine-readable payload (default: human summary)\n--verbose  expanded diagnostics on stderr";
   flush stdout

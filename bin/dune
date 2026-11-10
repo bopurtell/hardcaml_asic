@@ -142,4 +142,11 @@
  (modules experimental_compare)
  (public_name hardcaml-asic-experimental-compare)
  (package hardcaml_asic)
- (libraries hardcaml_asic.execution yojson))
+  (libraries hardcaml_asic.execution yojson))
+
+(executable
+ (name experimental_workload_inspect)
+ (modules experimental_workload_inspect)
+ (public_name hardcaml-asic-experimental-workload-inspect)
+ (package hardcaml_asic)
+ (libraries hardcaml_asic.execution))
