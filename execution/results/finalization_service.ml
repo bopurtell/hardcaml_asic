@@ -19,7 +19,7 @@ let file p=let r=checked (Checkpoint.file_record p) in obj ["sha256",s r.sha256;
 let now () = let t=Unix.gettimeofday () in let sec=floor t in let tm=Unix.gmtime sec in
   Printf.sprintf "%04d-%02d-%02dT%02d:%02d:%02d.%06d+00:00" (tm.tm_year+1900) (tm.tm_mon+1) tm.tm_mday tm.tm_hour tm.tm_min tm.tm_sec (int_of_float ((t-.sec)*.1e6))
 type selection={value:J.t;compatibility:J.t;publications:(string*Checkpoint.t) list}
-let selected execution =
+let selected ?(synthesis_only=false) execution =
   let value=json execution in
   (* Historical finalization accepted reduced occurrence objects. Preserve that
      contract when the optional named-flow field is absent; its presence requires
@@ -34,7 +34,8 @@ let selected execution =
     match plan with
     | Execution_plan.Stages p ->
       let expected =
-        if Execution_plan.Stage_plan.schema_version p = 4
+        if synthesis_only then [S.Synthesis]
+        else if Execution_plan.Stage_plan.schema_version p = 4
         then S.all
         else List.filter (fun s -> s <> S.Timing) S.all
       in
@@ -103,7 +104,11 @@ let run ~execution ~store ~environment ?(accept=false) ?support_tools ?precheck_
   Fun.protect ~finally:(fun ()->Sys.set_signal Sys.sigint old_int;Sys.set_signal Sys.sigterm old_term) (fun ()->
   let code=try
     Option.iter (fun f->f directory a.identity) allocated; check_cancel ();
-    let selected_=selected execution in let c=selected_.compatibility and pubs=selected_.publications in
+     let synthesis_only=Synthesis_envelope.requested environment in
+     if synthesis_only && accept then invalid_arg "strict synthesis report collection does not support --accept";
+     let selected_=selected ~synthesis_only execution in let c=selected_.compatibility and pubs=selected_.publications in
+     if synthesis_only then (Synthesis_envelope.check_plan environment (checked (Execution_plan.of_json (get selected_.value "plan")));
+       set "execution_envelope" (Synthesis_envelope.to_json ()));
     ignore (codec (J.exact_object c ~fields:["bundle_identity";"target";"requested_tools";"binding";"bridge_sha256";"project";"pdk_root"]));
      let execution_hash=hash execution in
      Option.iter (set "timing_analysis") (Timing_analysis.load_file ~expected_record:selected_.value execution);
@@ -123,16 +128,17 @@ let run ~execution ~store ~environment ?(accept=false) ?support_tools ?precheck_
     let probe=Runtime_probe.create_cancellable ~cancel ~directory:probes ~environment ~timeout:20. in
     checked (Runtime_probe.verify probe binding);check_cancel ();
     let tag="finalize-validate-"^String.sub (T.owned_name ()) 24 32 in
-    let request=checked (B.make_request ~operation:B.Validate_publication ~boundary:S.Signoff
+     let request=checked (B.make_request ~operation:B.Validate_publication ~boundary:(if synthesis_only then S.Synthesis else S.Signoff)
       ~candidate:(fst (List.hd (List.rev pubs))) ~project ~pdk_root:pdk ~request_id:tag ~tag
       ~reply_path:(directory^"/runtime-validation-reply.json") ~bridge_sha256:Segment_service.bridge_sha256 ~checkpoint:None ~source_boundary:None) in
     let request_path=directory^"/runtime-validation-request.json" in R.save_json request_path (B.request_to_json request);
     let output=Process.File (directory^"/runtime-validation.log") in
-    let invocation=T.docker_invocation d ~project:(Filename.dirname project) ~pdk_root:pdk ~workdir:project
+     let invocation=T.docker_invocation d ~workers:(if synthesis_only then 6 else 20)
+       ?pids_limit:(Synthesis_envelope.pids_limit environment) ~project:(Filename.dirname project) ~pdk_root:pdk ~workdir:project
       ~extra_mounts:[directory;Filename.dirname (fst (List.hd (List.rev pubs)))] ~pdk:(text (get (get c "target") "technology"))
       ~interpreter:true ~arguments:[bridge;request_path] ~cwd:project ~environment ~stdout:output ~stderr:output () in
     let argv=(T.process_specification invocation).argv in set "commands" (J.array [J.array (List.map s argv)]);save ();
-    let correlation=["schema_version",int "1";"request_id",s request.request_id;"request_path",s request_path;
+     let correlation=(if synthesis_only then ["execution_envelope",Synthesis_envelope.to_json ()] else []) @ ["schema_version",int "1";"request_id",s request.request_id;"request_path",s request_path;
       "request_sha256",s (B.request_identity request)] in
     R.save_json (directory^"/runtime-validation-transport.json") (obj (correlation @ [
       "argv",J.array (List.map s argv);"binding",T.to_json binding;"cwd",s project;
@@ -167,8 +173,8 @@ let run ~execution ~store ~environment ?(accept=false) ?support_tools ?precheck_
     copy (project^"/manifest.json") (target^"/manifest.json");copy_tree (project^"/constraints") (target^"/constraints");
     let provenance=ref (List.map (fun (p,(m:Checkpoint.t))->obj ["boundary",s (S.to_string m.boundary);"path",s p;"identity",s m.identity;"manifest_sha256",s (hash (p^"/manifest.json"))]) pubs) in
     let synth=flow^"/synthesis-state.json" in copy (fst (List.hd pubs)^"/state.json") synth;
-    copy (fst (List.hd (List.rev pubs))^"/state.json") (flow^"/signoff-state.json");
-    let state=E.value (E.read (flow^"/signoff-state.json")) in
+     if not synthesis_only then copy (fst (List.hd (List.rev pubs))^"/state.json") (flow^"/signoff-state.json");
+     let state=E.value (E.read (if synthesis_only then synth else flow^"/signoff-state.json")) in
     let eget j k=match j with `Assoc xs->List.assoc k xs | _->invalid_arg "state object required" in
     let final=flow^"/final" in Unix.mkdir final 0o777;copy (project^"/info.yaml") (final^"/info.yaml");
     let metrics=match eget state "metrics" with `Assoc xs->List.sort (fun (a,_) (b,_)->String.compare a b) xs | _->invalid_arg "metrics object required" in
@@ -177,16 +183,16 @@ let run ~execution ~store ~environment ?(accept=false) ?support_tools ?precheck_
     if top="" || Filename.basename top<>top || top="." || top=".." || String.contains top '\000' then invalid_arg "invalid top module path";
     List.iter (fun (key,relative)->let source=match eget state key with `String x->x | _->invalid_arg "view path required" in
       let dest=final^"/"^relative in Unix.mkdir (Filename.dirname dest) 0o777;copy source dest;
-      provenance:= !provenance @ [obj ["boundary",s "signoff";"view",s key;"source",s source;"sha256",s (hash source);"mapped",s ("evidence/final/"^relative)]])
-      ["gds","gds/"^top^".gds";"nl","nl/"^top^".nl.v";"lef","lef/"^top^".lef"];
+       provenance:= !provenance @ [obj ["boundary",s (if synthesis_only then "synthesis" else "signoff");"view",s key;"source",s source;"sha256",s (hash source);"mapped",s ("evidence/final/"^relative)]])
+       (if synthesis_only then ["nl","nl/"^top^".nl.v"] else ["gds","gds/"^top^".gds";"nl","nl/"^top^".nl.v";"lef","lef/"^top^".lef"]);
     let context=obj ["run_id",s a.identity;"build_identity",get manifest "identity";"manifest_sha256",s (hash (project^"/manifest.json"));"bundle",s project;"status",s "completed";
-      "requested_stage",s "full";"completed_stage",s "full";"outputs",obj ["flow",s "evidence"];
+       "requested_stage",s (if synthesis_only then "synthesis" else "full");"completed_stage",s (if synthesis_only then "synthesis" else "full");"outputs",obj ["flow",s "evidence"];
       "execution_binding_required",J.bool true;"execution_binding",T.to_json binding;
       "evidence_origin",obj ["contract",s Finalization_record.contract;"schema_version",int "1";"operation",s op;"selected_checkpoints",selected_checkpoints];
       "execution_mode",s "dockerized";"environment",obj ["requested",get c "requested_tools";"execution_binding",T.to_json binding]] in
-    let adapter=obj ["metrics_csv",s "derived from signoff-state.json metrics, cumulative final state";
+     let adapter=obj ["metrics_csv",s (if synthesis_only then "derived from synthesis-state.json metrics, cumulative synthesis state" else "derived from signoff-state.json metrics, cumulative final state");
       "synthesis",s "published synthesis-state.json; no synthetic Yosys report";
-      "scope",s "full denotes selected physical completion, not historical run completion"] in
+       "scope",s (if synthesis_only then "synthesis only; physical views/checks unavailable, acceptance not evaluated" else "full denotes selected physical completion, not historical run completion")] in
     let mapped=List.map (fun p->String.sub p (String.length directory+1) (String.length p-String.length directory-1),file p) (files flow @ files target) in
     set "evidence_context" context;set "selected_evidence" (J.array !provenance);set "mapped_files" (obj mapped);set "adapter" adapter;
     set "phase" (s "collection");save ();check_cancel ();
@@ -207,14 +213,14 @@ let run ~execution ~store ~environment ?(accept=false) ?support_tools ?precheck_
       let simulator=get (get check "tools") "execution_binding" in
       if (simulator<>J.null && simulator<>T.to_json binding) || (o.status="completed" && simulator<>T.to_json binding)
         then invalid_arg "postcheck execution binding mismatch");
-    check_cancel ();verify_resources ();ignore (selected execution);
+     check_cancel ();verify_resources ();ignore (selected ~synthesis_only execution);
     if hash execution<>execution_hash then invalid_arg "selected execution changed during finalization";
     List.iter (fun (p,expected)->if file (directory^"/"^p)<>expected then invalid_arg "mapped evidence changed during finalization") mapped;
     List.iter (fun (p,expected)->if file p<>expected then invalid_arg "postcheck collateral changed during finalization") !collateral;
     let results=Collect_service.to_json (Collect_service.collect ~context:(evidence context) ~synthesis_state:synth directory) in
     let results=match results with `Assoc xs->`Assoc (("provenance",evidence (obj ["contract",s Finalization_record.contract;"operation",s op;"selected_evidence",J.array !provenance;"adapter",adapter]))::
       List.map (fun (k,v)-> if List.mem k ["metrics";"synthesis_checks";"checks"] then k,(match v with `Assoc items->`Assoc (List.map (fun (name,v)->name,(match v with `Assoc fs->
-        let boundary=if List.assoc_opt "stage" fs=Some (`String "Yosys.Synthesis") then "synthesis" else "signoff" in `Assoc (("origin_boundary",`String boundary)::fs) | _->v)) items) | _->v) else k,v) xs) | _->assert false in
+         let boundary=if synthesis_only || List.assoc_opt "stage" fs=Some (`String "Yosys.Synthesis") then "synthesis" else "signoff" in `Assoc (("origin_boundary",`String boundary)::fs) | _->v)) items) | _->v) else k,v) xs) | _->assert false in
     let results_path=directory^"/results.json" in R.save_bytes results_path (E.record_bytes results);
     set "results" (obj ["path",s results_path;"sha256",s (hash results_path)]);
     let code=if accept then (

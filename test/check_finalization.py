@@ -34,7 +34,9 @@ if a[0]=='rm':
  block('cleanup')
  if mode.get('cleanup_fail'):sys.exit(9)
  (root/'containers'/a[-1]).unlink(missing_ok=True);sys.exit(0)
-assert a[0]=='run' and '--cpus=20' in a and '--pull=never' in a and IMAGE in a
+strict=os.environ.get('HARDCAML_ASIC_SYNTHESIS_TASK_LIMIT')=='6'
+assert a[0]=='run' and ('--cpus=6' if strict else '--cpus=20') in a and '--pull=never' in a and IMAGE in a
+assert ('--pids-limit=6' in a)==strict
 (root/'containers').mkdir(exist_ok=True);(root/'containers'/a[a.index('--name')+1]).write_text('owned')
 if 'iverilog' in a:
  if '-V' in a:print('Icarus fixture');sys.exit(0)
@@ -287,6 +289,44 @@ def suite(cli,consumer,package,fixtures,public=None):
             # Missing installed helper is authoritative, no Python fallback.
             with patch.object(ocaml_backend,'binary',side_effect=OSError('missing native helper')):
                 assert public_cli.main(['finalize',str(f.execution),'--operation-store',str(f.root/'none')])==2
+        finally:teardown(f)
+    # The opt-in route collects a genuine synthetic synthesis checkpoint without
+    # physical views, and exercises actual OCaml transport/publication/collector.
+    with patch.object(test_finalization.FinalizationTest,'publication',publication):
+        f=test_finalization.FinalizationTest();setup(f)
+        try:
+            f.native_env['HARDCAML_ASIC_SYNTHESIS_TASK_LIMIT']='6'
+            value=copy.deepcopy(f.value)
+            value.update(plan=dict(schema_version=4,stages=['synthesis'],initial_boundary=None),
+                         artifacts=value['artifacts'][:1],occurrences=value['occurrences'][:1])
+            phase4.save(f.execution,value)
+            checkpoint_dir=Path(value['artifacts'][0]['path'])
+            # Published checkpoint bytes remain immutable; absent mapped physical
+            # outputs below prove the synthesis-only collection scope.
+            (f.root/'mode.json').write_text('{}')
+            result=subprocess.run([str(cli),'--execution',str(f.execution),'--store',str(f.root/'strict'), '--json'],
+                                  env=f.native_env,text=True,capture_output=True,timeout=30)
+            receipt=json.loads(result.stdout)
+            assert result.returncode==0, (result.stdout,result.stderr)
+            directory=Path(receipt['attempt'])
+            assert receipt['execution_envelope']['total_container_tasks']==6
+            assert receipt['acceptance']=='not_evaluated' and receipt['external_postcheck']=='not_evaluated'
+            assert receipt['evidence_context']['completed_stage']=='synthesis'
+            assert not (directory/'evidence/signoff-state.json').exists()
+            assert not (directory/'evidence/final/gds').exists() and not (directory/'evidence/final/lef').exists()
+            original_netlist=Path(json.loads((checkpoint_dir/'state.json').read_text())['nl'])
+            assert (directory/'evidence/final/nl/fixture_top.nl.v').read_bytes()==original_netlist.read_bytes()
+            assert '--pids-limit=6' in receipt['commands'][0] and '--cpus=6' in receipt['commands'][0]
+            collected=json.loads((directory/'results.json').read_text())
+            for group in ('metrics','synthesis_checks','checks'):
+                assert all(item.get('origin_boundary')=='synthesis' for item in collected[group].values())
+            result=subprocess.run([str(cli),'--execution',str(f.execution),'--store',str(f.root/'strict-accept'), '--json','--accept'],
+                                  env=f.native_env,text=True,capture_output=True,timeout=30)
+            assert result.returncode!=0 and 'does not support --accept' in result.stdout
+            phase4.save(f.execution,f.value)
+            result=subprocess.run([str(cli),'--execution',str(f.execution),'--store',str(f.root/'strict-physical'), '--json'],
+                                  env=f.native_env,text=True,capture_output=True,timeout=30)
+            assert result.returncode!=0 and 'complete fresh recipe' in result.stdout
         finally:teardown(f)
     if RETAINED.exists():
         def snapshot(root):return {str(p):hashlib.sha256(p.read_bytes()).hexdigest() for p in root.rglob('*') if p.is_file()}

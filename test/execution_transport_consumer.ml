@@ -2,6 +2,8 @@ module T = Hardcaml_asic_execution.Execution_transport
 module J = Hardcaml_asic_execution.Identity_json
 module S = Hardcaml_asic_execution.Process_supervisor
 module P = Hardcaml_asic_execution.Process
+module Execution_plan = Hardcaml_asic_execution.Execution_plan
+module Synthesis_envelope = Hardcaml_asic_execution.Synthesis_envelope
 [@@@alert "-unsafe_multidomain"]
 let unwrap = function Ok x -> x | Error _ -> failwith "JSON construction"
 let string s = unwrap (J.string s)
@@ -22,6 +24,13 @@ let outcome = function
   | S.Failed s -> "failed:" ^ s
 let optional = function None -> J.null | Some s -> string s
 let main request =
+  if str (get request "op") = "envelope" then (
+    let env = strings (get request "environment") in
+    let plan = match Execution_plan.of_json (get request "plan") with Ok p -> p | Error e -> invalid_arg e in
+    Synthesis_envelope.check_plan env plan;
+    obj ["requested",J.bool (Synthesis_envelope.requested env);
+      "limit",(match Synthesis_envelope.pids_limit env with None -> J.null | Some n -> unwrap (J.integer (string_of_int n)))])
+  else
   match (if str (get request "op") = "parse" then T.parse (str (get request "raw"))
          else T.of_json (get request "binding")) with
   | Error e -> obj ["error", string e]
@@ -36,11 +45,18 @@ let main request =
     let workdir = nullable_string (get request "workdir") in
     let pdk = nullable_string (get request "pdk") in
     let entrypoint = str (get request "entrypoint") in
-    if op = "command" then
+    if op = "command" || op = "metadata-command" then
+      let pids_limit = match List.assoc_opt "pids_limit" (fields request) with
+        | None | Some J.Null -> None | Some (J.Integer n) -> Some (int_of_string n)
+        | _ -> invalid_arg "integer task cap required" in
       let argv = match binding with
+        | T.Docker d when op = "metadata-command" ->
+          let i = T.metadata_invocation ~workers:6 ?pids_limit d ~arguments:args ~environment:env
+            ~stdout:(P.Descriptor Unix.stdout) ~stderr:(P.Descriptor Unix.stderr) in
+          (T.process_specification i).argv
         | T.Native n -> n.interpreter :: ["-I"; "-B"] @ args
         | T.Docker d -> T.docker_command d ~project ~pdk_root ?workdir ?pdk ~entrypoint
-            ~name:(str (get request "name")) ~uid:(Unix.getuid ()) ~gid:(Unix.getgid ()) ()
+            ?pids_limit ~name:(str (get request "name")) ~uid:(Unix.getuid ()) ~gid:(Unix.getgid ()) ()
             @ (if bool (get request "interpreter") then
                  (match d.flags with Isolated -> ["-I"; "-B"] | Bytecode_disabled -> ["-B"]) else []) @ args in
       obj ["argv", list argv; "environment", list (T.clean_environment env); "binding", T.to_json binding]

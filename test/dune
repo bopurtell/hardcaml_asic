@@ -444,6 +444,14 @@
 ; routing cases and never runs dune, a provisioner or an external tool.
 
 (rule
+ (alias synthesis-collection-metadata)
+ (deps check_synthesis_collection_metadata.py)
+ (action (run python3 -B %{dep:check_synthesis_collection_metadata.py}
+   --cli %{exe:../bin/flow_cli.exe})))
+
+(alias (name runtest) (deps (alias synthesis-collection-metadata)))
+
+(rule
  (alias flow-cli)
  (deps
   test_flow_cli.py

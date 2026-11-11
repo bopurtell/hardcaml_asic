@@ -151,6 +151,9 @@ let diagnostics_json t execution =
   obj (fields @ ["transport_records",J.array (List.map (fun (launch,terminal) ->
     obj ["launch",str launch;"terminal",str terminal]) t.transport_records)])
 let call t ~operation ~boundary ~candidate ~source tag =
+  Synthesis_envelope.check_boundary t.environment boundary;
+  if Synthesis_envelope.requested t.environment && source <> None then
+    invalid_arg "strict synthesis envelope is fresh-only";
   checked (t.verify_runtime ());
   verify_resources t;
   checked (t.verify_inputs ());
@@ -163,7 +166,7 @@ let call t ~operation ~boundary ~candidate ~source tag =
   let bridge = t.project ^ "/bridge/librelane_bridge.py" in
   let output = Process.File (t.workspace ^ "/" ^ tag ^ ".log") in
   let invocation = match t.runtime with
-     | Docker d -> T.docker_invocation d ~workers:t.workers ~project:t.workspace ~pdk_root:t.pdk_root ~workdir:t.project
+     | Docker d -> T.docker_invocation d ~workers:t.workers ?pids_limit:(Synthesis_envelope.pids_limit t.environment) ~project:t.workspace ~pdk_root:t.pdk_root ~workdir:t.project
       ~pdk:(text (get (get t.compatibility "target") "technology")) ~interpreter:true ~arguments:[bridge;path]
       ~cwd:t.project ~environment:t.environment ~stdout:output ~stderr:output ()
     | Fixture (n,fixture) -> T.native_invocation n ~arguments:[fixture;bridge;path]
@@ -173,7 +176,7 @@ let call t ~operation ~boundary ~candidate ~source tag =
    let specification = T.process_specification invocation in
    let binding = match t.runtime with Docker _ -> checked (T.of_json (get t.compatibility "binding"))
      | Fixture (n,_) -> T.native ~interpreter:n.interpreter in
-   let correlation = ["schema_version",int 1;"request_id",str request.request_id;
+   let correlation = (if Synthesis_envelope.requested t.environment then ["execution_envelope",Synthesis_envelope.to_json ()] else []) @ ["schema_version",int 1;"request_id",str request.request_id;
      "request_path",str path;"request_sha256",str (B.request_identity request);
      "launch_record",str launch_path;"terminal_record",str terminal_path] in
    let run_dir=t.project ^ "/src/runs/" ^ tag in

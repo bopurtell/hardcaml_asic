@@ -57,6 +57,8 @@ let check_cancel cancel = match cancel () with None -> () | Some signal ->
   raise (Runner.Callback_error (Runner.cancellation ~signal:(if signal=Sys.sigint then 2 else 15) "preflight interrupted"))
 let probe_with_cancel ~cancel ~bundle ~support_tools ~pdk_root ~python ~resources ~environment ~directory
     ?(native=false) ?(allow_python_mismatch=false) () =
+  if Synthesis_envelope.requested environment then
+    invalid_arg "strict synthesis task envelope requires segmented stages, not coarse preflight/run";
   let manifest = codec (R.read_json (bundle ^ "/manifest.json")) in
   Manifest_metadata.validate (Yojson.Safe.from_string (J.canonical manifest));
   let requested = get manifest "requested_tools" in

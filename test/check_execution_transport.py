@@ -61,6 +61,28 @@ def verify(consumer, fixture, root, transport):
                 p.wait()
 
     accepted = 0
+    # Opt-in total-task cap is independent from the preserved default quota/env.
+    for cap in (1, 6, 20):
+        result = call(dict(base, pids_limit=cap))
+        assert result['argv'].count('--pids-limit=' + str(cap)) == 1
+        assert result['argv'].index('--pids-limit=' + str(cap)) < result['argv'].index(base['binding']['image_identity']['image_id'])
+        assert '--cpus=20' in result['argv']
+    for cap in (0, -1, 21, True, '6'):
+        assert 'error' in call(dict(base, pids_limit=cap))
+    for cap in (None, 6):
+        argv = call(dict(base, op='metadata-command', pids_limit=cap))['argv']
+        assert ('--pids-limit=6' in argv) == (cap == 6)
+        assert '--cpus=6' in argv and '--read-only' in argv and '-v' not in argv
+        assert argv[argv.index('--network') + 1] == 'none'
+    synthesis = dict(schema_version=4, stages=['synthesis'], initial_boundary=None)
+    profile = 'HARDCAML_ASIC_SYNTHESIS_TASK_LIMIT=6'
+    assert call(dict(op='envelope', environment=[profile], plan=synthesis)) == dict(requested=True, limit=6)
+    physical = dict(schema_version=4, stages=['synthesis', 'floorplan'], initial_boundary=None)
+    assert call(dict(op='envelope', environment=[], plan=physical)) == dict(requested=False, limit=None)
+    for envelope_env, plan in (([profile], physical), ([profile, profile], synthesis),
+                      (['HARDCAML_ASIC_SYNTHESIS_TASK_LIMIT=20'], synthesis),
+                      ([profile], dict(schema_version=4, stages=['floorplan'], initial_boundary='synthesis'))):
+        assert 'error' in call(dict(op='envelope', environment=envelope_env, plan=plan))
     def bounded(argv):
         argv = list(argv)
         argv.insert(argv.index("--name") + 2, "--cpus=20")

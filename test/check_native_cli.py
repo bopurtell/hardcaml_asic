@@ -41,10 +41,14 @@ def main():
         expected = identity.describe()
         # Additive native-only named-flow launch contract; CLI4 is unchanged.
         expected['cli_contract']['capabilities']['namedflow1'] = True
+        from check_synthesis_collection_metadata import CAPABILITY, verify
+        expected['cli_contract']['capabilities']['synthesis_collection1'] = CAPABILITY
+        expected['execution_envelope'] = None
         expected.update(module_dir=str(package), data_dir=str(package / 'data'),
                         toolchain_lock=str(package / 'data/toolchain.lock'),
                         package_version_source='installed-package-metadata')
         assert actual == expected, (actual, expected)
+        verify(binary)
         # All three documented flag locations and error payload renderers.
         for args in (["observation", "describe"], ["--json", "observation", "describe"],
                      ["observation", "--json", "describe"], ["observation", "describe", "--json"],

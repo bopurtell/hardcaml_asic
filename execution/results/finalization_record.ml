@@ -11,7 +11,7 @@ let of_json raw = try
   let optional=["exit_code";"execution";"binding";"selected_checkpoints";"runtime_validation";
     "selected_evidence";"mapped_files";"adapter";"evidence_context";"postcheck_collateral";
     "postcheck_record";"postcheck_sha256";"acceptance_report";"container_cleanup";"client_termination";
-    "timing_analysis"] in
+    "timing_analysis";"execution_envelope"] in
   let fields=match raw with J.Object xs -> xs | _ -> invalid_arg "malformed finalization receipt" in
   let malformed () = invalid_arg "malformed finalization receipt" in
   if not (List.for_all (fun k -> List.mem_assoc k fields) required)

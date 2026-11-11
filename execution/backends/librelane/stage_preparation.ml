@@ -103,6 +103,9 @@ let prepare ~bundle ~support_tools ~pdk_root ~python ~docker ~git ~resources ~wo
     Option.iter (fun p -> Result_store.save_json p report) !operation_report;
     if Some path <> !operation_report then Result_store.save_json path report in
   try
+    Synthesis_envelope.check_plan environment plan;
+    if Synthesis_envelope.requested environment && (match methodology with Some (_, p) -> Timing_intent_named_service.plan_expected p | None -> false)
+    then invalid_arg "strict synthesis envelope excludes native timing-intent producers";
     admit_metadata_roots ~workspace ~evidence_root;
     (* Inspect only the already-frozen typed plan here. Eligibility, bundle bytes,
        paths, cancellation and probes are deliberately checked AFTER the requested
@@ -204,7 +207,7 @@ let prepare ~bundle ~support_tools ~pdk_root ~python ~docker ~git ~resources ~wo
     List.iter (fun (name,digest) -> if hash (resources ^ "/" ^ name) <> digest then failwith ("installed runtime resource changed: " ^ name))
       ["librelane_bridge.py",Segment_service.bridge_sha256;"backend_protocol.py",Segment_service.protocol_sha256];
     let payload_hash = hash (resources ^ "/stage_metadata_probe.py") in
-     let host,container,binding = Runtime_probe.observe ~workers:6 probe ~python ~docker ~payload:(resources ^ "/stage_metadata_probe.py") ~pdk_root policy in
+     let host,container,binding = Runtime_probe.observe ~workers:6 ?pids_limit:(Synthesis_envelope.pids_limit environment) probe ~python ~docker ~payload:(resources ^ "/stage_metadata_probe.py") ~pdk_root policy in
     if hash (resources ^ "/stage_metadata_probe.py") <> payload_hash then failwith "metadata payload changed during probes";
     let evaluation = checked (Runtime_evidence.evaluate_observations policy ~host ~container ()) in
     let issues = Runtime_evidence.issues evaluation in

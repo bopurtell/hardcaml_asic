@@ -10,9 +10,9 @@ val create_cancellable : cancel:(unit -> int option) -> directory:string -> envi
 (* Cancellation signals use OCaml Sys/Unix representations, as Process_supervisor. *)
 val command : t -> prog:string -> arguments:string list -> string
 val observe_host : t -> python:string -> payload:string -> Identity_json.t
-val observe_container : ?workers:int -> t -> docker:string -> payload:string -> Runtime_contract.t -> Identity_json.t
+val observe_container : ?workers:int -> ?pids_limit:int -> t -> docker:string -> payload:string -> Runtime_contract.t -> Identity_json.t
 (* Standalone metadata only: no Classic imports, staging, mounts or fixed image. *)
-val observe : ?workers:int -> t -> python:string -> docker:string -> payload:string
+val observe : ?workers:int -> ?pids_limit:int -> t -> python:string -> docker:string -> payload:string
   -> pdk_root:string -> Runtime_contract.t
   -> Identity_json.t * Identity_json.t * Execution_transport.binding
 val verify : t -> Execution_transport.binding -> (unit, string) result

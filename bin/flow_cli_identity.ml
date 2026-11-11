@@ -1,5 +1,9 @@
 let note = "source-artifact identity is not implemented until P6.5: this build carries no stamp, so the revision, checkout state and source-inventory digest are unknown and the library/executor artifact match is unverified"
 let describe () =
+  let module E = Hardcaml_asic_execution.Synthesis_envelope in
+  let module J = Hardcaml_asic_execution.Identity_json in
+  let active = E.requested (Array.to_list (Unix.environment ())) in
+  let execution_envelope = if active then Yojson.Basic.from_string (J.canonical (E.to_json ())) else `Null in
   let module_dir=Flow_cli_paths.resources () in
   let data_dir=module_dir^"/data" in
   let version,source=try
@@ -14,13 +18,18 @@ let describe () =
     "source",`Assoc ["stamped",`Bool false;"revision",`Null;"state",`String "unknown";
       "inventory_digest",`Null;"library_artifact_match",`Null;"note",`String note];
     "module_dir",`String module_dir;"data_dir",`String data_dir;
+    "execution_envelope",execution_envelope;
     "toolchain_lock",`String (data_dir^"/toolchain.lock");
     "toolchain_lock_present",`Bool (try (Unix.stat (data_dir^"/toolchain.lock")).Unix.st_kind=Unix.S_REG with Unix.Unix_error _ -> false);
     "cli_contract",`Assoc ["version",`Int 4;"default_output",`String "human";"json_option",`String "--json";
       "results_defaults",`Assoc ["root",`String "<caller-cwd>/_flow_results";"operations",`String "<results-root>/operations";
         "runs",`String "<results-root>/runs";"stage_observations",`String "<resolved-workspace-parent>/observations"];
       "capabilities",`Assoc [
-           "namedflow1",`Bool true;
+            "namedflow1",`Bool true;
+            "synthesis_collection1",`Assoc ["schema_version",`Int 1;
+              "profile",`String "synthesis-total-tasks-v1";"total_container_tasks",`Int 6;
+              "fresh_only",`Bool true;"acceptance",`Bool false;
+              "opt_in",`String "HARDCAML_ASIC_SYNTHESIS_TASK_LIMIT=6"];
            "workload_inspection1",`Assoc ["schema_version",`Int 1;"read_only",`Bool true;
              "max_response_bytes",`Int (1024*1024);"result_contract",`String "hardcaml-asic.workload-result"];
           "workload_comparison1",`Assoc ["schema_version",`Int 1;"read_only",`Bool true;

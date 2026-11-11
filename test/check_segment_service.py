@@ -274,6 +274,17 @@ def verify(consumer, service, package, root, fixture, engine):
     _, retry = call(config, case, production=True)
     assert retry.returncode == 2 and Path(config["summary_path"]).read_bytes() == retained
     count += 1
+    config, case = prepared(image_closure=True)
+    config['environment'].append('HARDCAML_ASIC_SYNTHESIS_TASK_LIMIT=6')
+    out, process = call(config, case, production=True)
+    assert process.returncode == 0, (out, process.stderr)
+    records = json.loads(Path(config['diagnostics_path']).read_text())['transport_records']
+    assert len(records) == 2, (out, records)  # execution AND publication validation
+    for paths in records:
+        launch = json.loads(Path(paths['launch']).read_text())
+        assert '--pids-limit=6' in launch['argv'] and '--cpus=6' in launch['argv']
+        assert launch['execution_envelope']['total_container_tasks'] == 6
+    count += 1
     for native, mismatch, cleanup, nonzero in ((True, False, False, False), (False, True, False, False),
                                                (False, False, True, True), (False, False, True, False)):
         config, case = prepared("exit17" if nonzero else "success")

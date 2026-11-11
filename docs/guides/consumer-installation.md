@@ -87,6 +87,28 @@ Host requirements:
 
 Installing the package fetches none of the external tools.
 
+### Opt-in strict synthesis task envelope
+
+`HARDCAML_ASIC_SYNTHESIS_TASK_LIMIT=6` selects `synthesis-total-tasks-v1` for
+fresh segmented/named synthesis and its publication/report collection. It is an
+explicit public environment interface; absence preserves the existing transport.
+Other values and duplicate entries are rejected. Physical/resumed recipes,
+native timing-intent producers, coarse preflight/run and `finalize --accept` are excluded.
+
+Every selected container receives an explicit `--pids-limit=6` in its retained
+launch argv, independently of the six-CPU quota and six-worker configuration.
+This counts **all** Linux tasks, including Python controllers, statistics threads
+and idle executor threads. It therefore bounds native threads to at most six but
+does not promise six usable executor slots. Exhaustion is a failed attempt, never
+permission to expand the limit. Opt-in `finalize` collects the actual synthesis
+checkpoint/netlist/metrics, without fabricating signoff state, GDS or LEF.
+
+Before resource admission, independently bind the provider installation and
+capture to a cap receipt verifying both Docker `HostConfig.PidsLimit=6` and the
+effective cgroup-v2 `pids.max=6`. A CPU quota or an observer-ready boolean alone
+does not establish this envelope. Keep an exclusive EDA interval under the global
+budget; no flow activation is implied by selecting this environment variable.
+
 The installed Python runtime is exactly nine modules: `__init__`,
 `backend_protocol`, `librelane_bridge`, `stage_metadata_probe`, `probe`,
 `runtime_observation`, `runtime_contract`, `managed_python` and `paths`.

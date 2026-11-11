@@ -100,7 +100,7 @@
  (modules flow_cli flow_cli_args flow_cli_paths flow_cli_identity)
  (public_name hardcaml-asic-flow)
  (package hardcaml_asic)
-  (libraries unix yojson))
+   (libraries hardcaml_asic.execution unix yojson))
 
 (executable
  (name experimental_inspect)
