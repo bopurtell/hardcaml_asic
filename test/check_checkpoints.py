@@ -9,9 +9,8 @@ import subprocess
 import sys
 import tempfile
 sys.dont_write_bytecode = True
-RETAINED = [Path('/tmp/opencode/backend-v1-integration'), Path('/tmp/opencode/librelane-slice4-production')]
 
-def verify(consumer, inspector):
+def verify(consumer, inspector, retained_roots=()):
     from hardcaml_asic_flow import checkpoint as old, execution_plan as plans, presentation
     counts = [0, 0]
     env = dict(os.environ, PATH='/unusable', PYTHONPATH='/unusable')
@@ -54,7 +53,7 @@ def verify(consumer, inspector):
                                    capture_output=True, env=env, check=True)
             assert human.stdout == '\n'.join(lines) + '\n', (path, human.stdout, lines)
     retained_count = 0
-    for root in RETAINED:
+    for root in map(Path, retained_roots):
         manifests = sorted(root.glob('**/checkpoints/*/manifest.json'))
         assert manifests, f'retained fixtures missing: {root}'
         for file in manifests:
@@ -278,11 +277,13 @@ def main():
     p.add_argument('--consumer', type=Path)
     p.add_argument('--inspector', type=Path)
     p.add_argument('--installed', action='store_true')
+    p.add_argument('--retained-root', type=Path, action='append', default=[],
+                   help='also validate every checkpoint in this retained real experiment; missing fixtures fail')
     args = p.parse_args()
     repo = Path(__file__).resolve().parents[1]
     if not args.installed:
         sys.path.insert(0, str(repo / 'flow'))
-        verify(args.consumer.resolve(), args.inspector.resolve())
+        verify(args.consumer.resolve(), args.inspector.resolve(), args.retained_root)
         return
     with tempfile.TemporaryDirectory(prefix='installed-checkpoint-', dir='/tmp/opencode') as tmp:
         root = Path(tmp)
@@ -307,7 +308,7 @@ def main():
             'sys.addaudithook(audit)\n'
             f'sys.path.insert(0,{str(root)!r})\nfrom reference_harness import activate\nactivate()\n'
             f'ns=runpy.run_path({str(script)!r},run_name="checkpoint_test")\n'
-            f'ns["verify"](Path({str(consumer / "_build/default/checkpoint_consumer.exe")!r}),Path({str(prefix / "bin/hardcaml-asic-experimental-checkpoint-inspect")!r}))\n')
+            f'ns["verify"](Path({str(consumer / "_build/default/checkpoint_consumer.exe")!r}),Path({str(prefix / "bin/hardcaml-asic-experimental-checkpoint-inspect")!r}),{[str(p.resolve()) for p in args.retained_root]!r})\n')
         subprocess.run([sys.executable, '-I', '-B', str(launcher)], cwd=root, check=True)
 
 if __name__ == '__main__':

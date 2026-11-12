@@ -2,7 +2,7 @@
     publication or acceptance inference. Parents/files must remain stable during
     validation (as with Result_store); this is not a hostile-writer sandbox. *)
 module Stage = Hardcaml_asic.Flow.Stage
-type schema = Schema_1 | Schema_2
+type schema = Schema_1 | Schema_2 | Schema_3
 type file_record = private { sha256 : string; bytes : string }
 
 (** Streaming SHA-256 and decimal byte count for a regular file. Follows host
@@ -30,6 +30,11 @@ val parse : string -> (t, string) result
 val read : string -> (t, string) result
 val to_json : t -> Identity_json.t
 val absolute_path : string -> (string, string) result
+
+(** Schema3/sram_segmented1 evidence entries. Placement and later checkpoints
+    carry exactly one transitive macro_power_geometry artifact; earlier stages
+    carry none. Timing has no restart target. Paths are publication-local. *)
+val macro_evidence : boundary:Stage.t -> Identity_json.t -> (Identity_json.t list, string) result
 
 (** Actual recorded-versus-expected compatibility, exact bound location, complete
     inventory, opaque file hashes, native view structure, public metrics and host

@@ -1,6 +1,6 @@
 module J = Identity_json
 module Stage = Hardcaml_asic.Flow.Stage
-type schema = Schema_1 | Schema_2
+type schema = Schema_1 | Schema_2 | Schema_3
 type file_record = { sha256 : string; bytes : string }
 type t =
   { schema : schema; identity : string; location : string; boundary : Stage.t
@@ -63,15 +63,36 @@ let stage s = match List.find_opt (fun x -> Stage.to_string x = s) Stage.all wit
 let targets schema boundary = match schema, boundary with
   | Schema_1, Stage.Synthesis -> [Stage.Floorplan; Stage.Placement]
   | Schema_1, _ -> []
-  | Schema_2, _ -> (Stage.capability boundary).restart_targets
+  | Schema_3, Stage.Synthesis -> [Stage.Floorplan]
+  | Schema_3, Stage.Timing -> []
+  | Schema_3, Stage.Signoff -> fail "segmented SRAM Signoff checkpoints are unsupported"
+  | (Schema_2 | Schema_3), _ -> (Stage.capability boundary).restart_targets
+(* Schema3 is specifically sram_segmented1, not a generic checkpoint upgrade.
+   Evidence paths are copied/rebound by the publisher; producer metadata stays
+   unchanged. Timing is terminal for this capability, never a Signoff handoff. *)
+let macro_evidence ~boundary raw = protect (fun () ->
+  let entries=match raw with J.Array xs -> xs | _ -> fail "macro evidence array required" in
+  let expected=match boundary with Stage.Synthesis | Stage.Floorplan -> 0 | Stage.Signoff ->
+    fail "segmented SRAM Signoff is unsupported" | _ -> 1 in
+  if List.length entries <> expected then fail "missing/duplicate transitive macro PDN evidence";
+  List.iter (fun entry ->
+    ignore (codec (J.exact_object entry ~fields:["kind";"path";"sha256";"bytes";"producer_boundary";"producer_tag"]));
+    if get entry "kind" <> str "macro_power_geometry" || get entry "producer_boundary" <> str "placement" then
+      fail "unsupported macro evidence kind/producer";
+    let tag=string (get entry "producer_tag") in
+    if tag="" || tag="." || tag=".." || String.contains tag '/' || String.contains tag '\000' then fail "invalid macro evidence producer tag";
+    if not (absolute (path_string (get entry "path"))) then fail "absolute macro evidence path required";
+    ignore (record (obj ["sha256",get entry "sha256";"bytes",get entry "bytes"]))) entries;
+  entries)
 let decode raw =
   let schema = match get raw "schema_version" with
-    | J.Integer "1" -> Schema_1 | J.Integer "2" -> Schema_2
+    | J.Integer "1" -> Schema_1 | J.Integer "2" -> Schema_2 | J.Integer "3" -> Schema_3
     | _ -> fail "unsupported checkpoint manifest" in
   let names = ["schema_version"; "identity"; "location"; "boundary"; "restart_supported";
                "compatibility"; "files"; "external"; "metrics"; "acceptance"] in
   ignore (codec (J.exact_object raw ~fields:(names @ (match schema with Schema_1 -> []
-    | Schema_2 -> ["restart_targets"; "tested_image_id"; "closure_scope"]))));
+    | Schema_2 -> ["restart_targets"; "tested_image_id"; "closure_scope"]
+    | Schema_3 -> ["restart_targets"; "tested_image_id"; "closure_scope"; "macro_profile"; "macro_evidence"]))));
   let identity = string (get raw "identity") in
   if identity <> J.identity (codec (J.unsigned raw ~field:"identity")) then fail "checkpoint identity/location mismatch";
   let location = path_string (get raw "location") in
@@ -88,11 +109,20 @@ let decode raw =
   in
   if not (equal (get raw "restart_supported") (J.bool (restart_targets <> [])))
      || get raw "acceptance" <> str "not_evaluated" then fail "invalid boundary capability";
-  if schema = Schema_2 &&
+   if schema <> Schema_1 &&
      (not (equal (get raw "restart_targets") (J.array (List.map (fun s -> str (Stage.to_string s)) restart_targets)))
       || get raw "tested_image_id" <> str (Stage.capability boundary).tested_image_id
       || get raw "closure_scope" <> str "path_bound") then fail "invalid tested restart/closure capability";
-  let files = inventory (get raw "files") and external_files = inventory (get raw "external") in
+   let files = inventory (get raw "files") and external_files = inventory (get raw "external") in
+   if schema=Schema_3 then (
+     if get raw "macro_profile" <> str Macro_contract.segmented_profile then fail "unsupported macro checkpoint profile";
+     let entries=match macro_evidence ~boundary (get raw "macro_evidence") with Ok xs -> xs | Error e -> fail e in
+     List.iter (fun e ->
+       let p=path_string (get e "path") in
+       if not (String.starts_with ~prefix:(location ^ "/views/") p) then fail "macro evidence escapes checkpoint";
+       let relative=String.sub p (String.length location+1) (String.length p-String.length location-1) in
+       if List.assoc_opt relative files <> Some (record (obj ["sha256",get e "sha256";"bytes",get e "bytes"])) then
+         fail "macro evidence is not bound by checkpoint inventory") entries);
   if not (List.for_all (fun n -> List.mem_assoc n files) ["state.json"; "resolved.json"; "closure.json"; "segment.json"])
   then fail "incomplete checkpoint metadata";
   List.iter (fun (name, _) ->
@@ -156,7 +186,7 @@ let validate ?(restart=false) ?restart_to ?(check_external=true) ?location ~comp
   if restart && t.restart_targets = [] then fail "checkpoint has no tested restart target";
   (match restart_to with Some target when not (List.mem target t.restart_targets) ->
      fail ("untested restart transition: " ^ Stage.to_string t.boundary ^ " -> " ^ Stage.to_string target) | _ -> ());
-  if t.schema = Schema_2 then (
+   if t.schema <> Schema_1 then (
     let image = try get (get (get compatibility "binding") "image_identity") "image_id" with Invalid _ -> J.null in
     if image <> str (Stage.capability t.boundary).tested_image_id then
       fail "restart eligibility is tested only in the declared exact image");
@@ -170,8 +200,15 @@ let validate ?(restart=false) ?restart_to ?(check_external=true) ?location ~comp
       | _ -> fail ("missing/corrupt checkpoint artifact: " ^ name)) in
   let sorted = List.sort String.compare in
   if sorted (walk "") <> sorted ("manifest.json" :: List.map fst t.files) then fail "checkpoint file inventory mismatch";
-  List.iter (fun (name, expected) -> if measure_file (Filename.concat path name) <> expected then
-    fail ("missing/corrupt checkpoint artifact: " ^ name)) t.files;
+   List.iter (fun (name, expected) -> if measure_file (Filename.concat path name) <> expected then
+     fail ("missing/corrupt checkpoint artifact: " ^ name)) t.files;
+   if t.schema=Schema_3 then (
+     let report=json_file (Filename.concat path "segment.json") in
+     if get report "macro_profile" <> get t.raw "macro_profile" then fail "macro checkpoint/report profile mismatch";
+     let entries j=match macro_evidence ~boundary:t.boundary j with Ok xs -> xs | Error e -> fail e in
+     let without_path e=codec (J.unsigned e ~field:"path") in
+     if List.map without_path (entries (get report "macro_evidence")) <>
+        List.map without_path (entries (get t.raw "macro_evidence")) then fail "macro checkpoint/report evidence mismatch");
   let state = state_projection (read_bytes (Filename.concat path "state.json")) in
   ignore (fields (get state "metrics"));
   let views = List.filter (fun (k, _) -> k <> "metrics") (fields state) in

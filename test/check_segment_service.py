@@ -200,7 +200,7 @@ def verify(consumer, service, package, root, fixture, engine):
     for mode in ("validate_mismatch", "validate_exit17", "validate_missing_reply", "validate_wrong_id", "validate_timeout", "validate_cancel", "validate_manifest_mutation", "validate_artifact_mutation"):
         run_case(mode, image=True, code={"validate_exit17": 17, "validate_timeout": 124, "validate_cancel": 143}.get(mode))
 
-    # Full fixture-backed six-boundary runner, with every source coming from actual
+    # Full fixture-backed schema-4 seven-boundary runner, with every source coming from actual
     # preceding publication and both initial/continuation bridge checks.
     config, case = prepared()
     config["plan"] = ep.resolve_stages("signoff").as_dict()
@@ -217,15 +217,23 @@ def verify(consumer, service, package, root, fixture, engine):
         previous = artifact["path"]
     count += 1
 
-    # Resumed schema 2 and schema 3 operate in the retained prepared workspace.
-    for schema in (2, 3):
+    # Historical recipes remain parseable evidence, but cannot execute on this bridge.
+    for schema in (2, 3, 4):
         resumed = copy.deepcopy(good)
         resumed["initial_checkpoint"] = str(published)
-        resumed["plan"] = (ep.resolve_stages("placement", resume=True) if schema == 2 else
-                           ep.resolve_sequence(["floorplan", "placement"], initial_boundary="synthesis")).as_dict()
+        resumed["plan"] = ep.StagePlan("placement", resume=True, schema_version=schema,
+            stages=() if schema == 2 else ("floorplan", "placement"),
+            initial_boundary=None if schema == 2 else "synthesis").as_dict()
         result, _ = call(resumed, case=Path(good["workspace"]).parent)
-        assert result["summary"]["exit_code"] == 0, result
-        assert [a["boundary"] for a in result["summary"]["artifacts"]] == ["floorplan", "placement"]
+        if schema == 4:
+            assert result["summary"]["exit_code"] == 0, result
+            assert [a["boundary"] for a in result["summary"]["artifacts"]] == ["floorplan", "placement"]
+        else:
+            assert result["summary"]["exit_code"] != 0 and not result["events"], result
+            # Runner omits the artifacts key when validation fails before any
+            # publication. Also require that no backend call was launched.
+            assert not result["summary"].get("artifacts"), result
+            assert not result["diagnostics"]["transport_records"], result
         count += 1
     resumed = copy.deepcopy(good)
     resumed["initial_checkpoint"] = str(published)

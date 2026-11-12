@@ -74,7 +74,11 @@ let publish ?(name=random_name) ?validate_runtime ?before_promote ~candidate ~st
     let metadata = List.map (fun n -> let p = Filename.concat candidate n in n, (p, snapshot p))
       ["state.json"; "resolved.json"; "closure.json"; "segment.json"] in
     let source n = fst (List.assoc n metadata) in
-    let report = codec (J.parse (read (source "segment.json"))) in
+     let report = codec (J.parse (read (source "segment.json"))) in
+     let macro = match report with J.Object xs -> List.mem_assoc "macro_profile" xs | _ -> false in
+     let macro_entries = if not macro then [] else (
+       if get report "macro_profile" <> str Macro_contract.segmented_profile then fail "unsupported macro publication profile";
+       checked (Checkpoint.macro_evidence ~boundary (get report "macro_evidence"))) in
     if get report "status" <> str "completed" || get report "boundary" <> str (Stage.to_string boundary)
        || get report "bridge_sha256" <> get compatibility "bridge_sha256" then fail "inconsistent outer segment completion";
     let state = checked (Backend_state.parse (read (source "state.json"))) in
@@ -85,7 +89,7 @@ let publish ?(name=random_name) ?validate_runtime ?before_promote ~candidate ~st
     Unix.mkdir staging 0o700; owned := Some staging;
     Unix.mkdir (Filename.concat staging "views") 0o700;
     let count = ref 0 and views = ref [] and files = ref [] in
-    let state = Backend_state.map_paths state ~f:(fun source ->
+     let state = Backend_state.map_paths state ~f:(fun source ->
       let source = checked (Checkpoint.absolute_path source) in
       let expected = snapshot source in
       incr count;
@@ -94,7 +98,19 @@ let publish ?(name=random_name) ?validate_runtime ?before_promote ~candidate ~st
       copy source dest expected;
       views := (source, expected) :: !views;
       files := (relative, record dest) :: !files;
-      Filename.concat location relative) in
+       Filename.concat location relative) in
+     let macro_entries=List.mapi (fun index entry ->
+       let source=match get entry "path" with J.String p -> checked (Checkpoint.absolute_path p) | _ -> fail "macro evidence path required" in
+       let expected=snapshot source in
+       let actual=snd expected in
+       if get entry "sha256" <> str actual.sha256 || get entry "bytes" <> codec (J.integer actual.bytes) then
+         fail "macro evidence changed before publication";
+       let relative=Printf.sprintf "views/macro-evidence-%05d.json" index in
+       copy source (Filename.concat staging relative) expected;
+       views := (source,expected)::!views;
+       files := (relative,actual)::!files;
+       match entry with J.Object xs -> obj (("path",str (Filename.concat location relative))::List.remove_assoc "path" xs)
+       | _ -> assert false) macro_entries in
     write (Filename.concat staging "state.json") (Backend_state.serialize state);
     List.iter (fun n -> let p, expected = List.assoc n metadata in copy p (Filename.concat staging n) expected)
       ["resolved.json"; "closure.json"; "segment.json"];
@@ -102,13 +118,16 @@ let publish ?(name=random_name) ?validate_runtime ?before_promote ~candidate ~st
       ["state.json"; "resolved.json"; "closure.json"; "segment.json"];
     let external_files = codec (J.parse (read (Filename.concat staging "closure.json"))) in
     let capability = Stage.capability boundary in
-    let unsigned = obj ["schema_version", codec (J.integer "2"); "location", str location;
-      "boundary", str (Stage.to_string boundary); "restart_supported", J.bool (capability.restart_targets <> []);
-      "restart_targets", J.array (List.map (fun s -> str (Stage.to_string s)) capability.restart_targets);
+     let restart_targets=if not macro then capability.restart_targets else
+       match boundary with Stage.Synthesis -> [Stage.Floorplan] | Stage.Timing -> [] | _ -> capability.restart_targets in
+     let unsigned = obj (["schema_version", codec (J.integer (if macro then "3" else "2")); "location", str location;
+       "boundary", str (Stage.to_string boundary); "restart_supported", J.bool (restart_targets <> []);
+       "restart_targets", J.array (List.map (fun s -> str (Stage.to_string s)) restart_targets);
       "tested_image_id", str capability.tested_image_id; "closure_scope", str "path_bound";
       "compatibility", compatibility; "files", obj (List.map (fun (n,(r:Checkpoint.file_record)) ->
         n, obj ["sha256", str r.sha256; "bytes", codec (J.integer r.bytes)]) !files);
-      "external", external_files; "metrics", get report "metrics"; "acceptance", str "not_evaluated"] in
+       "external", external_files; "metrics", get report "metrics"; "acceptance", str "not_evaluated"] @
+       if macro then ["macro_profile",str Macro_contract.segmented_profile;"macro_evidence",J.array macro_entries] else []) in
     let manifest = match unsigned with J.Object xs -> obj (("identity", str (J.identity unsigned)) :: xs) | _ -> assert false in
     write (Filename.concat staging "manifest.json") (J.canonical manifest ^ "\n");
     let validate () =
@@ -126,7 +145,7 @@ let publish ?(name=random_name) ?validate_runtime ?before_promote ~candidate ~st
       t in
     ignore (validate ());
     let image_only = match external_files with J.Object xs -> List.exists (fun (n,_) -> String.starts_with ~prefix:"/nix/store/" n) xs | _ -> false in
-    let runtime_validation = if not image_only then `Not_required else (
+     let runtime_validation = if not (image_only || macro) then `Not_required else (
       match validate_runtime with
       | None -> fail "image-only closure requires explicit runtime validator"
       | Some callback -> match (try callback { staging; location; boundary; compatibility }

@@ -28,17 +28,25 @@ to avoid renumbering historical ASIC P/S tasks or Protemu's own phases.
 
 ## Current baseline
 
+**Tooling release update, 2026-11-12:** [stock SRAM segmented support](guides/segmented-sram.md)
+is complete in the bounded single-stock256×16/R0 through-Timing scope, including
+path-bound schema-3 checkpoint restarts and fresh named execution. Installed real
+example qualification and Workbench production TUI launch/reopen pass. Macro
+Signoff/finalization/PT.7 linked exceptions remain unsupported. This qualification
+is separate from the open Protemu physical/timing findings in PT.3c.
+
 - Project/resource declaration, behavioral and flop RAM implementations, immutable
   bundles, execution/reporting/acceptance, explicit stages, and named flow profiles
-  are delivered. Their evidence remains in the archives.
-- Protemu's `bin/asic_bundle.ml` registers `program` as 256×16, 1RW, latency one,
-  currently with explicit `Flops` policy. Its emitter still uses
-  `Bundle.render ~simulation_build`; current ASIC uses `~simulation_project`.
+  are implemented. Their evidence remains in the archives.
+- Protemu's `asic/cli/asic_bundle.ml` now uses `Project.emit_bundle`; its `program`
+  resource remains 256×16, 1RW, latency one with explicit instance Flops/Exact
+  variants. PT.3a emission/resource adoption and PT.3b vendor-functional system
+  regression pass; implemented-netlist/physical acceptance remains pending.
 - CMOS5L now has an exact 256×16 SRAM mapping, role-complete collateral and fresh
   synthesis/full support. The independent example passes physical/electrical
   acceptance, TT precheck and final-gate functional replay while retaining one SRAM
-  and its original 16 staging flops. Macro checkpoints and timed-model conformance
-  remain open.
+  and its original 16 staging flops. Stock single-macro path-bound checkpoints
+  through Timing are now qualified; timed-model conformance remains open.
 - SRAM S.1 inventory, S.2a functional-model tests, and qualified S.3 physical
   feasibility have evidence. The [October 23 checkpoint](sram/sram-status.md#2026-10-23-update)
   resolves eligibility and records the support-tools marker fix. Production
@@ -66,15 +74,32 @@ named owner and does not reuse that repository's phase IDs.
 
 ## Active queue
 
+### Status terminology
+
+Use **complete** when the stated scope's required implementation and acceptance
+gates have passed. Always retain the scope qualification: complete for a supported
+profile or library/example scope does not establish arbitrary-design or Protemu
+acceptance. Unsupported capabilities and separately deferred optional work are not
+unfinished gates of that completed scope.
+
+Use **implemented; acceptance pending** when implementation exists but required
+acceptance remains open; **partial**, **blocked**, **pending**, or **deferred** for
+unfinished work, with the remaining gate or reason stated explicitly. Do not use
+“delivered” as a status: it does not distinguish implementation from acceptance.
+Older records using that word must be interpreted from their checklists and evidence,
+not automatically treated as complete. Apply these terms in downstream summaries.
+PT.7/PT.8 library/example completion and their open Protemu consumer obligations
+must be reported separately.
+
 | Order | Item | Dependencies | State |
 | --- | --- | --- | --- |
 | 1 | PT.0 — Repair and refresh SRAM feasibility evidence | Existing S.3 records | Complete in revised example-centered scope; historical probe qualifications retained |
 | 2 | PT.1 — Exact production SRAM backend | PT.0 corrected power/corner findings | Required scope complete; PT.1d optional/deferred |
 | 3 | PT.2 — Macro collateral and physical controls | PT.1 mapping/wrapper contract | Complete for stock 256×16/R0 fresh full profile; example acceptance passed |
-| 4 | PT.3 — Macro-backed Protemu acceptance | Required PT.1 scope and PT.2; consumer API migration | Pending; independent consumer-adoption track |
+| 4 | PT.3 — Macro-backed Protemu acceptance | Required PT.1 scope and PT.2; consumer API migration | PT.3a/b complete; routed functional replay passes, physical acceptance blocked |
 | 5 | PT.4 — Resource-mapping inspection API | Existing records; PT.1–PT.2 for macro fields | Complete: CLI/library preparation and independent-example acceptance |
 | 6 | PT.5 — Requested-versus-realized resource checks | PT.2, PT.4 | Complete in supported retained-evidence scope: reconciliation, physical measurements and sampled resource timing |
-| 7 | PT.6 — Workbench resource inspector | PT.4; PT.5 for realized evidence | Delivered: bounded Resources inspector, exact sources, qualified comparison and declared controls |
+| 7 | PT.6 — Workbench resource inspector | PT.4; PT.5 for realized evidence | Complete in bounded inspector scope: exact sources, qualified comparison and declared controls |
 | 8 | PT.7 — Synchronizer/reset-aware timing declarations | Endpoint reference design; independent example acceptance | Complete in agreed bounded library/example synthesis scope; physical qualification tracked separately |
 | 9 | PT.8 — Reproducible design-variant comparisons | PT.4–PT.7; independent-example workload acceptance | Complete in bounded library/example scope: declarations, verified workload/results, comparisons and example tradeoff; Protemu selection separate/pending |
 
@@ -209,23 +234,40 @@ Missing collateral, ambiguous corners and invalid placement produce actionable e
 
 **Owners: Protemu for adoption/system checks; ASIC for backend defects and evidence.**
 
-**Next bounded step: PT.3a.** Audit the current Protemu emitter and dependency
-record, migrate to the supported public API, and emit explicit flop and exact-SRAM
-variants with the same logical memory contract. Verify deterministic source sets,
-resource identity and selection before running expensive physical work. Use the
-accepted example as the integration reference; no Questa installation is needed.
+**Next bounded step: PT.3c.** PT.3a adoption and PT.3b real-system vendor-functional
+regression are verified in Protemu's [adoption record](../../hardcaml_protemu/docs/pt3a-adoption.md)
+and [functional evidence](../../hardcaml_protemu/docs/pt3b-verification.md). Review
+Protemu physical placement/timing intent before implementation and final-netlist
+replay. No Questa installation is needed for the functional-model gate.
 
-- [ ] **PT.3a — Consumer adoption.** Migrate Protemu's emitter to the current public
+First actual-loader physical attempt and independent final-netlist replay are
+recorded in [PT.3c evidence](../../hardcaml_protemu/docs/pt3c-physical-attempt.md).
+Run `0d5ed7ff0dfb4e44bcb6459bbb251fca` remains failed: slow setup −4.0586 ns/503
+violations and nine undispositioned Magic markers. Final-netlist functional replay
+passes all18 scenarios separately. Next investigate slow-corner timing repair and
+same-DEF wide-OBS diagnostic controls; do not weaken constraints or relabel the run.
+
+- [x] **PT.3a — Consumer adoption.** Migrate Protemu's emitter to the current public
   API and deliberately adopt a compatible dependency/toolchain revision. Preserve
   an explicit flop configuration and add an exact-SRAM configuration for `program`.
-- [ ] **PT.3b — Real system regression.** Exercise the loader/core/program-store
+  Verified against recorded ASIC `b0b3384acbe22c8a30264cbdf0c19008c58bf3c5` in a
+  private Protemu prefix: complete repeated bundle bytes, stable contract/resource
+  identity, explicit policy, source-role separation, exact RTL linkage and existing
+  regressions pass. Exact currently emits Synthesis bundles; Hardening requires
+  reviewed Protemu physical intent. No real EDA or system macro replay is claimed.
+- [x] **PT.3b — Real system regression.** Exercise the loader/core/program-store
   path: load, readback, fetch, stalls, reset/disable, image validity, rejected host
   accesses during execution, and independence from unspecified memory outputs.
   Verify both emitted source roles with the applicable models.
+  Completed 2026-11-12: nine positive functional replays and nine diagnostic-specific
+  oracle self-checks pass, including actual vendor SRAM execution, behavioral/Flops
+  controls and real loader/core replay under zero/ones/X unspecified-output policies.
+  Pending READ/FETCH cancellation and partial-load disable are witnessed. Independent
+  review and legacy Verilator regressions pass; no physical/timed claim is implied.
 - [ ] **PT.3c — Implemented-design replay.** Run the actual macro-backed system
   through the adopted flow and replay its final netlist with the macro model.
   Record timing/check outcomes and any provisional constraint assumptions;
-  an RTL-only fixture is not final-netlist evidence.
+   an RTL-only fixture is not final-netlist evidence.
 
 **Exit:** the actual Protemu system works with the selected SRAM and has linked
 consumer/backend/run evidence. Final physical selection additionally requires
@@ -254,7 +296,7 @@ integration is outside this implementation slice. PT.3 adoption is not a prerequ
   Preparation occurs before bundle emission: no bundle identity is fabricated.
   Linking a separately emitted bundle requires explicit future verification.
 
-Delivered `Project.prepare_resources`, structured pure resource snapshots, durable
+Completed scope includes `Project.prepare_resources`, structured pure resource snapshots, durable
 attempt lifecycle, `preparation1` capability and the installed `preparation-inspect`
 reader. Example `prepare`/`preview`/`resources` cover memory and resource-free FIFO.
 All **89 installed-consumer checks** and both repositories' full test suites pass
@@ -275,14 +317,14 @@ Implementation authorized 2026-10-26 after separate flow work finished:
 Preparation selects resources, bundle emission binds expectations, and synthesis/
 physical result checks establish realization. Separate PT.4-attempt linkage is
 optional and unavailable unless verified. Reconciliation, physical measurements and
-sampled resource timing are now delivered in the supported evidence scope below.
+sampled resource timing are now complete in the supported evidence scope below.
 Library/CLI and the independent example are the testbed;
 Protemu adoption and Workbench integration are independent.
 
 - [x] **PT.5a — Reconciliation.** Check expected macro type/count/identity against
   synthesis and final physical instances. Report missing, unexpected, unresolved
   and optimized-away instances distinctly, retaining stage and producer identity.
-  Delivered 2026-10-27 for supported flat mapped/final-netlist evidence; unsupported
+  Completed 2026-10-27 for supported flat mapped/final-netlist evidence; unsupported
   hierarchy is unresolved, and absence never implies optimization. New bundles bind
   a structured snapshot to their exact resolution; historical inventories remain
   explicitly legacy. Separate PT.4 attempt linkage is optional/unavailable.
@@ -329,7 +371,7 @@ PT.5 raw inspection remains compatible; UI does not duplicate selection/reconcil
   expose project-supported selection controls through public preview/new-build
   interfaces. Do not mutate immutable bundles or duplicate selection logic in UI.
 
-Delivered 2026-10-28: provider-owned `resource-inspect` bounded bridge and Resources
+Completed in bounded inspector scope, 2026-10-28: provider-owned `resource-inspect` bounded bridge and Resources
 workspace with explicit bundle/coarse/execution/finalization sources, paged details
 and authorized artifacts. Exact A/B captures compare selection differences and
 compatible Observed/Derived scalars; estimates/unknowns have no measured delta.
@@ -410,7 +452,7 @@ generic acceptance; Protemu for its separate circuit intent and consumer review.
   requested Yosys `keep=1` preserves five original stages in the tested mapping.
   All three sampled downstream setup/hold links remain timed. No automatic state
   insertion, general false paths, blanket chain exceptions or physical-preservation claim.
-- [x] **PT.7c — Reviewable evidence (bounded scope).** Delivered identity-covered requested intent,
+- [x] **PT.7c — Reviewable evidence (bounded scope).** Completed identity-covered requested intent,
   producer-reported resolution, command-completed application, hash-bound raw reports
   and strict read-only library/CLI inspection for standalone synthesized-netlist audits.
   **Accepted 2026-10-28:** [native-state/coarse-flow slice](development/pt7c-native-flow.md).
@@ -598,7 +640,7 @@ only a concrete dependency of the PT work; record that decision here.
 
 **ASIC P6:** source-artifact identity, waiver/provisioning authority and independent
 installation gates remain open at their [recorded status](archive/phase-plan-2026-10-24.md#asic-p6--shared-tooling-distribution).
-Keep P6 IDs when resuming them. Packaging already delivered is not new PT work.
+Keep P6 IDs when resuming them. Packaging already implemented is not new PT work.
 
 **ASIC P7/S/T:** [historical definitions and disposition](archive/phase-plan-2026-10-24.md#asic-p7-s-and-t--retained-independent-tracks)
 remain available. PT.0 supplements S.3; PT.1–PT.2 deliver S.4's production work

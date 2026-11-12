@@ -130,7 +130,7 @@ def main():
             assert p.returncode == 0, (mutation, p.stderr)
             exports[mutation] = json.loads(p.stdout)
         discovery = run([prefix / "bin/hardcaml-asic-experimental-plan-inspect"],
-                        input=json.dumps({"schema_version": 3, "stages": ["synthesis", "floorplan", "placement", "cts", "routing", "signoff"], "initial_boundary": None}))
+                        input=json.dumps({"schema_version": 4, "stages": ["synthesis", "floorplan", "placement", "cts", "routing", "timing", "signoff"], "initial_boundary": None}))
         assert discovery.returncode == 0, discovery.stderr
         discovery = json.loads(discovery.stdout)
         image = discovery["operation_sequence"][0]["backend"]["tested_image_id"] if "tested_image_id" in discovery["operation_sequence"][0]["backend"] else None
@@ -510,7 +510,7 @@ def main():
         snapshot = Path(terminal['methodology']['reference']['snapshot_path'])
         snapshot.unlink()
         inspect(attempt, False)
-        print(f"namedflow1 ({'source native helpers' if source_mode else 'installed'}): two-profile six-stage bridge execution; frozen report/inspection identity and provenance; source/profile deletion stability; required snapshot/reference negatives; unchanged read-updates; prepared-input and resolved-value vetoes; finalization and failed/interrupted/preflight request evidence passed")
+        print(f"namedflow1 ({'source native helpers' if source_mode else 'installed'}): two-profile schema-4 seven-stage bridge execution; frozen report/inspection identity and provenance; source/profile deletion stability; required snapshot/reference negatives; unchanged read-updates; prepared-input and resolved-value vetoes; finalization and failed/interrupted/preflight request evidence passed")
 
 
 if __name__ == "__main__":

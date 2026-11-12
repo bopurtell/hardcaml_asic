@@ -30,6 +30,15 @@ spec = importlib.util.spec_from_file_location("native_fixture", Path(__file__).w
 fixture = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(fixture)
 fixture.run(bridge, path)
+alias = os.environ.get("SRAM_ALIAS_MUTATION")
+if alias and not validating and req["boundary"] == "placement":
+    target = Path(alias)
+    target.unlink()
+    target.symlink_to(os.environ["SRAM_ALIAS_DESTINATION"], target_is_directory=True)
+mutation = os.environ.get("SRAM_COLLATERAL_MUTATION")
+if mutation and not validating and req["boundary"] == os.environ.get("SRAM_MUTATE_BOUNDARY", "placement"):
+    target = Path(mutation)
+    target.write_text(target.read_text() + " changed after fixture tool success")
 mutation = os.environ.get("NAMED_INPUT_MUTATION")
 if mutation and (not os.environ.get("NAMED_MUTATE_BOUNDARY") or req["boundary"] == os.environ["NAMED_MUTATE_BOUNDARY"]):
     target = Path(req["project"]) / mutation

@@ -106,13 +106,49 @@ let verify ~manifest:m ~configuration =
      | [ p ] when String.equal p rtl || String.equal p ("simulation/" ^ top ^ ".v") -> ()
      | _ -> J.fail "named classic v1 simulation_sources must name the provider RTL");
     ignore (require "constraints/top.sdc" : string);
-    let config = Yojson.Safe.from_string configuration in
-    J.validate config;
+     let config = Yojson.Safe.from_string configuration in
+     J.validate config;
+     (* Only exact provider-generated macro links are admitted. Their complete
+        canonical reconstruction is checked by Methodology_plan; this inventory
+        still rejects every other path-bearing override. *)
+     let macro_inputs =
+       match List.Assoc.find (match m with `Assoc xs -> xs | _ -> []) "macro_contract" ~equal:String.equal with
+       | None -> []
+       | Some c ->
+         if not (J.equal (J.get c "schema_version") (`Int 2)) then J.fail "named SRAM requires schema2 Hardening";
+         let stock="RM_IHPSG13_1P_256x16_c2_bm_bist" in
+         let macro=match J.array (J.get c "macros") with
+          | [macro] when J.equal (J.get macro "module") (`String stock) -> macro
+          | _ -> J.fail "named SRAM supports exactly one stock256x16 macro" in
+         if not (J.equal (J.get c "execution") (`String "fresh_full") &&
+           J.equal (J.get m "operation") (`String "Hardening")) then J.fail "named SRAM requires schema2 Hardening";
+         let intent=J.get macro "physical_intent" in
+         if not (J.equal (J.get intent "orientation") (`String "R0")) then J.fail "named SRAM requires R0";
+         let instance=Resource.Id.rtl_instance_name (Resource.Id.of_string_exn (J.string (J.get macro "resource"))) in
+         if not (String.equal (J.string (J.get macro "instance")) instance) then J.fail "named SRAM requires canonical instance";
+         let path dir suffix=`String ("pdk_dir::libs.ref/sg13cmos5l_sram/" ^ dir ^ "/" ^ stock ^ suffix) in
+         let corners=["nom_fast_1p32V_m40C","fast_1p32V_m55C";"nom_slow_1p08V_125C","slow_1p08V_125C";"nom_typ_1p20V_25C","typ_1p20V_25C"] in
+         let expected=[
+           "MACROS",`Assoc [stock,`Assoc [
+             "instances",`Assoc [instance,`Assoc ["location",J.get intent "location_um";"orientation",`String "R0"]];
+             "lef",`List [path "lef" ".lef"];"gds",`List [path "gds" ".gds"];"spice",`List [path "cdl" ".cdl"];
+             "lib",`Assoc (List.map corners ~f:(fun (corner,suffix) -> corner,`List [path "lib" ("_" ^ suffix ^ ".lib")]))]];
+           "EXTRA_VERILOG_MODELS",`List [`String ("dir::../macros/" ^ stock ^ ".blackbox.v")];
+           "PDN_CFG",`String "dir::../physical/pdn.tcl";
+           "EXTRA_SPICE_MODELS",`List [path "cdl" ".cdl"];
+           "KLAYOUT_DRC_RUNSET",`String "pdk_dir::libs.tech/klayout/tech/drc/ihp-sg13cmos5l.drc"] in
+         List.iter ["macros/" ^ stock ^ ".blackbox.v";"physical/macro-plan.json";"physical/pdn.tcl"]
+           ~f:(fun p -> ignore (require p : string));
+         let generated=J.get m "generated_settings" in
+         List.map expected ~f:(fun (key,value) ->
+           if not (J.equal value (J.get generated key) && J.equal value (J.get config key)) then J.fail ("named SRAM generated link mismatch: " ^ key);
+           key,value)
+     in
     let links =
       [ "VERILOG_FILES", `List [ `String ("dir::" ^ top ^ ".v") ]
       ; "PNR_SDC_FILE", `String "dir::../constraints/top.sdc"
-      ; "SIGNOFF_SDC_FILE", `String "dir::../constraints/top.sdc"
-      ]
+       ; "SIGNOFF_SDC_FILE", `String "dir::../constraints/top.sdc"
+       ] @ macro_inputs
     in
     List.iter links ~f:(fun (k, v) ->
       if not (J.equal (J.get config k) v)
@@ -127,7 +163,8 @@ let verify ~manifest:m ~configuration =
     match config with
     | `Assoc xs ->
       List.iter xs ~f:(fun (key, value) ->
-        if String.equal key "meta" || List.mem unsupported_input_keys key ~equal:String.equal
+         if String.equal key "meta" || (List.mem unsupported_input_keys key ~equal:String.equal &&
+           not (List.Assoc.mem macro_inputs key ~equal:String.equal))
         then J.fail ("named classic v1 does not support additional input setting " ^ key
                      ^ "; use the provider-generated config/RTL/SDC and target links");
         if String.is_substring key ~substring:"::"

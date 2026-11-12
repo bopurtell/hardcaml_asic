@@ -95,54 +95,8 @@ let probe_with_cancel ~cancel ~bundle ~support_tools ~pdk_root ~python ~resource
   let target = get manifest "target" in
   attempt (fun () ->
     if Macro_contract.active manifest || is_file (safe_child bundle "src/config.json") then (
-    let config = codec (R.read_json (safe_child bundle "src/config.json")) in
-    let collateral = Macro_contract.validate manifest config in
-    List.iter (fun (role, reference) ->
-      check_cancel cancel;
-      let relative = String.sub reference 9 (String.length reference - 9) in
-      (* CMOS5L SRAM exposure links to shared SG13G2 collateral. Constrain the
-         resolved file to the pinned checkout, not the technology subdirectory. *)
-      let path = safe_child pdk_root (text (get target "technology") ^ "/" ^ relative) in
-      if not (is_file path) then add ("missing macro " ^ role ^ ": " ^ path)
-      else (
-        let digest = hash path in
-        references := !references @ [obj ["role",s ("macro:" ^ role);"reference",s reference;"path",s path;"sha256",s digest]];
-        (* A modified technology-exposure symlink must not pass merely because
-           its new target happens to be a clean file elsewhere in the checkout. *)
-        let rec links base = function
-          | [] -> []
-          | component::rest ->
-            let next = Filename.concat base component in
-            (if (Unix.lstat next).Unix.st_kind=Unix.S_LNK then [next] else []) @ links next rest in
-        let aliases = links pdk_root (String.split_on_char '/' (text (get target "technology") ^ "/" ^ relative)) in
-        if command "git" (["-C";pdk_root;"status";"--porcelain";"--";path] @ aliases) <> ""
-        then add ("modified macro " ^ role ^ ": " ^ path))) collateral));
-   if Macro_contract.physical manifest then attempt (fun () ->
-     let plan = get (get manifest "macro_contract") "physical_plan" in
-     if codec (R.read_json (safe_child bundle "physical/macro-plan.json")) <> plan
-     then failwith "physical plan file differs from manifest";
-     List.iter (fun (relative,contents) ->
-       if hash (safe_child bundle relative)<>Identity_json.sha256_bytes contents
-       then failwith ("physical input differs from canonical generation: " ^ relative)) (Macro_contract.physical_files manifest);
-     (* Include transitive deck includes and sibling default JSON. All resolved
-        paths remain inside the selected pinned PDK checkout. *)
-     let rec tree ancestors path =
-       check_cancel cancel;
-       let path=resolve path in
-       if not (String.starts_with ~prefix:(resolve pdk_root ^ "/") path) then failwith "checking collateral escapes pinned PDK";
-       if List.mem path ancestors then failwith "checking collateral symlink cycle";
-       if (Unix.stat path).Unix.st_kind=Unix.S_DIR then
-         Array.to_list (Sys.readdir path) |> List.sort String.compare |> List.concat_map (fun name -> tree (path::ancestors) (path ^ "/" ^ name))
-       else if is_file path then [path] else failwith "unsupported checking collateral" in
-     let paths=List.concat_map (fun relative -> tree [] (safe_child pdk_root relative))
-       ["ihp-sg13cmos5l/libs.tech/klayout";"ihp-sg13g2/libs.tech/klayout/tech/drc";
-        "ihp-sg13cmos5l/libs.tech/magic";"ihp-sg13cmos5l/libs.tech/netgen"] |> List.sort_uniq String.compare in
-     let paths=List.sort_uniq String.compare (paths @ List.map (safe_child pdk_root)
-       ["ihp-sg13cmos5l/libs.ref/sg13cmos5l_stdcell/verilog/sg13cmos5l_stdcell.v";
-        "ihp-sg13cmos5l/libs.ref/sg13cmos5l_stdcell/verilog/sg13cmos5l_udp.v"]) in
-     if command "git" (["-C";pdk_root;"status";"--porcelain";"--"] @ paths) <> ""
-     then failwith "modified pinned checking collateral";
-     List.iter (fun path -> references := !references @ [obj ["role",s "physical:checking_collateral";"path",s path;"sha256",s (hash path)]]) paths);
+    references := !references @ Macro_inputs.collect ~manifest ~bundle ~pdk_root ~command
+      ~check_cancel:(fun () -> check_cancel cancel)));
    if get manifest "timing_physical_qualification"<>J.null && not (Macro_contract.physical manifest) then attempt (fun () ->
      Timing_intent_evidence.validate_qualification (Yojson.Safe.from_string (J.canonical manifest));
      let paths=List.map (safe_child pdk_root)

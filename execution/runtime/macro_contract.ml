@@ -190,4 +190,27 @@ let require_full manifest =
     ignore (validate manifest (get manifest "flow_configuration")))
 
 let require_synthesis manifest =
-  if active manifest then fail "physical execution and checkpoint continuation are unsupported; only fresh synthesis is supported"
+  if active manifest then fail "legacy synthesis-only gate does not admit SRAM checkpoints; use schema2 Hardening segmented admission through Timing, or fresh coarse execution"
+
+(* sram_segmented1 is deliberately narrower than coarse fresh_full. The bundle
+   contract stays unchanged; execution capability is selected by the provider. *)
+let segmented_profile = "stock256x16_r0_through_timing_v1"
+let require_segmented manifest =
+  if active manifest then (
+    check (physical manifest) "segmented SRAM requires schema2 Hardening; schema1 physical continuation is unsupported";
+    ignore (validate manifest (get manifest "flow_configuration"));
+    check (List.length (array (get (get manifest "macro_contract") "macros"))=1)
+      "segmented SRAM supports exactly one stock256x16 R0 macro";
+    check (get manifest "timing_intent"=J.null && get manifest "timing_native_coverage"=J.null &&
+      get manifest "timing_physical_qualification"=J.null)
+      "segmented SRAM does not support PT7 linked timing intent or exceptions")
+
+let require_segmented_plan manifest plan =
+  require_segmented manifest;
+  if active manifest then match plan with
+    | Execution_plan.Stages p ->
+      check (not (List.mem Execution_plan.Stage.Signoff (Execution_plan.Stage_plan.sequence p)))
+        "segmented SRAM Signoff is unsupported; maximum endpoint is Timing";
+      check (Execution_plan.Stage_plan.source_boundary p <> Some Execution_plan.Stage.Signoff)
+        "segmented SRAM cannot resume Signoff"
+    | _ -> fail "segmented SRAM requires a stage recipe"

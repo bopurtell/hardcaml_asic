@@ -15,8 +15,9 @@ type t = { workspace : string; project : string; pdk_root : string; store : stri
     verify_inputs : unit -> (unit, string) result;
     verify_resolved : string -> (unit, string) result;
    failure_exit_code : B.operation -> T.result -> int option }
-let bridge_sha256 = "19e34f189f8cd47a3911c48a772c0b77a7a3f66dc3470a252f9cd88251f1fed0"
+let bridge_sha256 = "37a848289286479715b7d6ac1d9aa6b3c43a8f3e205a85d6f510794daecf3295"
 let protocol_sha256 = "eb6490db856f551ffe2ab35ea872bdc85c86801339e67a9d5bdf427238b25ae1"
+let macro_runtime_sha256 = "20b4288ce4ecb89577454edcaa489583fd8eeaed14f663888b59c9eba7fa9048"
 exception Service_error of Runner.error
 let fail s = raise (Service_error (Runner.failure s))
 let checked = function Ok x -> x | Error s -> fail s
@@ -43,11 +44,18 @@ let verify_resources t =
   List.iter (fun (name,hash) -> let path = Filename.concat (t.project ^ "/bridge") name in
     regular path;
     if (checked (Checkpoint.file_record path)).sha256 <> hash then fail ("transported resource changed: " ^ name))
-    ["librelane_bridge.py",bridge_sha256; "backend_protocol.py",protocol_sha256]
+     ["librelane_bridge.py",bridge_sha256; "backend_protocol.py",protocol_sha256];
+   let manifest=read_json (t.project ^ "/manifest.json") in
+   if Macro_contract.active manifest then (
+     Macro_contract.require_segmented manifest;
+     if (checked (Checkpoint.file_record (t.project ^ "/bridge/physical_runtime.py"))).sha256 <> macro_runtime_sha256 then
+       fail "transported macro runtime changed")
 let handoff t ~boundary path =
   ignore (directory path);
   if not (within t.store path) then fail "checkpoint must belong to selected mounted store";
-  let manifest = checked (Checkpoint.validate ~restart:true ~restart_to:boundary ~compatibility:t.compatibility path) in
+   let manifest = checked (Checkpoint.validate ~restart:true ~restart_to:boundary ~compatibility:t.compatibility path) in
+   if Macro_contract.active (read_json (t.project ^ "/manifest.json")) && manifest.schema <> Checkpoint.Schema_3 then
+     fail "macro continuation requires checkpoint schema3 profile";
   {path; manifest}
 let create_internal ~runtime ~workspace ~project ~pdk_root ~checkpoint_store ~compatibility ~environment ~timeout ?(workers=6) ?(cancel=fun () -> None) ?initial_checkpoint ?(verify_runtime=(fun () -> Ok ())) ?(verify_inputs=(fun () -> Ok ())) ?(verify_resolved=(fun _ -> Ok ())) ?(failure_exit_code=(fun _ _ -> None)) () = protect (fun () ->
    if workers < 1 || workers > 6 then fail "segment workers must be in 1..6";
@@ -223,7 +231,8 @@ let call t ~operation ~boundary ~candidate ~source tag =
    checked (t.verify_resolved (candidate ^ "/resolved.json"));
    request,process,reply,launch_path,terminal_path
 let validate t plan = protect (fun () ->
-  verify_resources t;
+   verify_resources t;
+   Macro_contract.require_segmented_plan (read_json (t.project ^ "/manifest.json")) plan;
   checked (t.verify_inputs ());
   match plan with Execution_plan.Coarse _ -> fail "segment service requires a stage plan"
   | Execution_plan.Stages p ->
@@ -247,7 +256,10 @@ let invoke t action (context:(unit,checkpoint) Runner.context) = protect (fun ()
   let tag = Stage.to_string boundary ^ "-" ^ random () in
   let candidate = t.project ^ "/candidates/" ^ tag in
    let request,process,reply,transport_record,transport_result = call t ~operation:B.Execute_segment ~boundary ~candidate ~source tag in
-  let report = checked (Segment_report.of_json ~request (read_json (candidate ^ "/segment.json"))) in
+   let report = checked (Segment_report.of_json ~request (read_json (candidate ^ "/segment.json"))) in
+   let macro=Macro_contract.active (read_json (t.project ^ "/manifest.json")) in
+   let reported=match report.raw with J.Object xs -> List.mem_assoc "macro_profile" xs | _ -> false in
+   if macro<>reported then fail "macro segment profile missing or unexpected";
    let segment = {request;process;reply;report;transport_record;transport_result} in
   Hashtbl.add t.completed candidate segment;
   Runner.Segment_result (segment,{Runner.status=Completed;exit_code=0;error=None}))

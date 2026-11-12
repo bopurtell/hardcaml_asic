@@ -20,7 +20,14 @@ let now () = let t=Unix.gettimeofday () in let sec=floor t in let tm=Unix.gmtime
   Printf.sprintf "%04d-%02d-%02dT%02d:%02d:%02d.%06d+00:00" (tm.tm_year+1900) (tm.tm_mon+1) tm.tm_mday tm.tm_hour tm.tm_min tm.tm_sec (int_of_float ((t-.sec)*.1e6))
 type selection={value:J.t;compatibility:J.t;publications:(string*Checkpoint.t) list}
 let selected ?(synthesis_only=false) execution =
-  let value=json execution in
+   let value=json execution in
+   (* Reject bounded macro executions before the fresh-full eligibility check,
+      so a legitimate Timing prefix gets its actual capability reason. *)
+   (match get value "artifacts" with J.Array artifacts -> List.iter (fun a ->
+     match get a "path" with J.String p ->
+       let m=checked (Checkpoint.read p) in
+       if m.schema=Checkpoint.Schema_3 then invalid_arg "segmented SRAM finalization is unsupported; maximum endpoint is Timing"
+     | _ -> ()) artifacts | _ -> ());
   (* Historical finalization accepted reduced occurrence objects. Preserve that
      contract when the optional named-flow field is absent; its presence requires
      the complete new Runner record and a verified immutable snapshot. *)
@@ -57,9 +64,14 @@ let selected ?(synthesis_only=false) execution =
       || get occurrence "action_key"<>s ("implementation."^name)
       || get occurrence "occurrence_id"<>s (attempt^"/implementation."^name)
       || get artifact "boundary"<>s name then invalid_arg "inconsistent stage completion/evidence";
-    let path=text (get artifact "path") in
-    let m=checked (Checkpoint.read path) in
-    let c=match !compatibility with Some c->c | None->compatibility:=Some m.compatibility;m.compatibility in
+     let path=text (get artifact "path") in
+     let m=checked (Checkpoint.read path) in
+     if m.schema=Checkpoint.Schema_3 then invalid_arg "segmented SRAM finalization is unsupported; maximum endpoint is Timing";
+     let c=match !compatibility with Some c->c | None->compatibility:=Some m.compatibility;m.compatibility in
+     (match get c "project" with J.String project ->
+       if Sys.file_exists (project ^ "/manifest.json") && Macro_contract.active (json (project ^ "/manifest.json")) then
+         invalid_arg "segmented SRAM finalization is unsupported; maximum endpoint is Timing"
+      | _ -> ());
     ignore (checked (Checkpoint.validate ~compatibility:c path));
     Option.iter (fun r -> if get c "bundle_identity" <> s (Hardcaml_asic.Methodology_plan.bundle_identity (Methodology_execution_record.plan r))
       then invalid_arg "methodology/checkpoint bundle mismatch") methodology;

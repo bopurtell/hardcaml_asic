@@ -449,8 +449,11 @@ def unused_pinned_cmos5l_invocation(gds):
             path.unlink()
         else:
             path.write_bytes(content)
-    execute = next(n for n in ast.parse(bridge.read_text()).body if isinstance(n, ast.FunctionDef) and n.name == "execute")
-    exec(compile(ast.Module(body=[execute], type_ignores=[]), str(bridge), "exec"), ns)
+    # Execute the real bounded admission helper too: schema1 remains coarse-only,
+    # while schema2's supported segmented path has its own integration corpus.
+    execute = [n for n in ast.parse(bridge.read_text()).body if isinstance(n, ast.FunctionDef)
+               and n.name in ("execute", "macro_runtime")]
+    exec(compile(ast.Module(body=execute, type_ignores=[]), str(bridge), "exec"), ns)
     candidate = root / "must-not-publish"
     executor_budgets = []
     def set_tpe(executor):
@@ -463,9 +466,9 @@ def unused_pinned_cmos5l_invocation(gds):
             ns["execute"]({"project":str(bundle), "pdk_root":str(pdk), "candidate":str(candidate),
                            "boundary":"synthesis", "operation":"execute_segment", "checkpoint":None})
         except ValueError as e:
-            assert "segmented checkpoints are unsupported" in str(e)
+            assert "schema2 Hardening" in str(e) and "schema1 physical continuation is unsupported" in str(e)
         else:
-            raise AssertionError("macro checkpoint capability must not be minted")
+            raise AssertionError("schema1 SRAM checkpoint capability must not be minted")
     assert executor_budgets == [6]
     assert not candidate.exists()
     liberty.write_text("synthetic macro collateral")

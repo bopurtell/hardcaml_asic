@@ -13,6 +13,7 @@ type segment = private
   }
 val bridge_sha256 : string
 val protocol_sha256 : string
+val macro_runtime_sha256 : string
 val verify_reply : Backend_protocol.request -> Backend_protocol.reply
 (* Correlated protocol-v1 reply and actual regular artifact hashes/lengths.
     Raises [Runner.Callback_error] on invalid evidence. *)

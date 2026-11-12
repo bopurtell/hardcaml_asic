@@ -230,7 +230,7 @@ def verify(consumer, reader):
         r = reject(query('no-schema1-upgrade'))
         assert 'not a checkpoint/restart input' in r['error']
         assert (candidate / 'manifest.json').read_text() == '{"schema_version":1}'
-    print(f'checkpoint publisher: {checks} checks; all six boundaries, native metric bytes, old/new readers, '
+    print(f'checkpoint publisher: {checks} checks; all seven boundaries, native metric bytes, old/new readers, '
           'explicit callback failures/interruption, mutation vetoes and 12 concurrent no-clobber publishers passed')
 
 

@@ -171,9 +171,11 @@ let prepare ~bundle ~support_tools ~pdk_root ~python ~docker ~git ~resources ~wo
     let manifest_path = bundle ^ "/manifest.json" in
      let manifest_hash = hash manifest_path and manifest = read manifest_path in
      Manifest_metadata.validate (Yojson.Safe.from_string (J.canonical manifest));
-     Timing_intent_named_service.validate_plan ~methodology ~initial_checkpoint ~plan manifest;
-    if Macro_contract.active manifest then
-      failwith "SRAM segmented checkpoints are unsupported; use run --stage synthesis (fresh coarse synthesis)";
+      Macro_contract.require_segmented_plan manifest plan;
+      Timing_intent_named_service.validate_plan ~methodology ~initial_checkpoint ~plan manifest;
+      let macro = Macro_contract.active manifest in
+      if macro then (match Hardcaml_asic.Bundle.verify_manifest_identity (Yojson.Safe.from_file manifest_path) with
+        | Ok () -> () | Error e -> failwith ("invalid macro bundle identity: " ^ Core.Error.to_string_hum e));
     if get manifest "schema_version" <> codec (J.integer "1") || get manifest "adapter" <> s "LibreLane" then failwith "unsupported bundle schema or adapter";
     let identity = text (get manifest "identity") in
     if String.length identity <> 64 || not (String.for_all (fun c -> c>='0' && c<='9' || c>='a' && c<='f') identity) then failwith "invalid bundle identity";
@@ -203,7 +205,15 @@ let prepare ~bundle ~support_tools ~pdk_root ~python ~docker ~git ~resources ~wo
       (match ref with J.Object xs -> (match List.assoc_opt "sha256" xs with None | Some J.Null -> () | Some j -> if text j <> actual then failwith ("changed external reference: " ^ path)) | _ -> assert false);
       if Runtime_probe.command git_probe ~prog:git ~arguments:["-C";repo;"status";"--porcelain";"--";path] <> "" then failwith ("modified external reference: " ^ path);
       obj ["role",get ref "role";"path",s path;"sha256",s actual]) refs in
-    let resources = Unix.realpath resources |> directory in
+     let macro_references = if not macro then [] else
+       Macro_inputs.collect ~manifest ~bundle ~pdk_root
+         ~command:(fun name arguments -> Runtime_probe.command git_probe
+           ~prog:(Runtime_probe.find_executable ~environment:git_env (if name="git" then git else name)) ~arguments)
+         ~check_cancel:(fun () -> match cancel () with None -> () | Some n ->
+           raise (Runner.Callback_error (Runner.cancellation ~signal:(Segment_service.signal n) "macro preflight interrupted"))) in
+     let resources = Unix.realpath resources |> directory in
+     if macro && hash (resources ^ "/physical_runtime.py") <> Segment_service.macro_runtime_sha256 then
+       failwith "installed macro runtime resource changed";
     List.iter (fun (name,digest) -> if hash (resources ^ "/" ^ name) <> digest then failwith ("installed runtime resource changed: " ^ name))
       ["librelane_bridge.py",Segment_service.bridge_sha256;"backend_protocol.py",Segment_service.protocol_sha256];
     let payload_hash = hash (resources ^ "/stage_metadata_probe.py") in
@@ -215,7 +225,7 @@ let prepare ~bundle ~support_tools ~pdk_root ~python ~docker ~git ~resources ~wo
     let report = obj (["ready",J.bool ready;"issues",J.array issues;"waivers",J.array (Runtime_evidence.waivers evaluation);
       "metadata_probe",obj ["protocol_version",codec (J.integer "1");"kind",s "stage_runtime_metadata";
         "sha256",s payload_hash];
-      "references",J.array references;"requested",requested;"support_tools",s support_tools;"pdk_root",s pdk_root;"python",s python;
+       "references",J.array (references @ macro_references);"requested",requested;"support_tools",s support_tools;"pdk_root",s pdk_root;"python",s python;
       "execution_binding",T.to_json binding;"runtime_contract",obj ["authority",s "bundle.requested_tools";
       "normalized_policy",Runtime_contract.to_json policy;"observations",obj ["host",host;"container",container];
         "comparisons",J.array (Runtime_evidence.comparisons evaluation)]] @ reference_fields @ request_fields) in
@@ -238,7 +248,8 @@ let prepare ~bundle ~support_tools ~pdk_root ~python ~docker ~git ~resources ~wo
         let destination = project ^ "/tt/" ^ relative in mkdir (Filename.dirname destination);
         copy (safe_child support_tools relative) destination)) refs;
       Unix.mkdir (project ^ "/bridge") 0o700;
-      List.iter (fun name -> copy (resources ^ "/" ^ name) (project ^ "/bridge/" ^ name)) ["librelane_bridge.py";"backend_protocol.py"];
+       List.iter (fun name -> copy (resources ^ "/" ^ name) (project ^ "/bridge/" ^ name)) ["librelane_bridge.py";"backend_protocol.py"];
+       if macro then copy (resources ^ "/physical_runtime.py") (project ^ "/bridge/physical_runtime.py");
       Unix.mkdir (project ^ "/candidates") 0o700; mkdir checkpoint_store
     | Some checkpoint -> ignore (checked (Checkpoint.validate ~restart:true ~compatibility checkpoint)));
     validate_files bundle; validate_files project;
@@ -251,7 +262,16 @@ let prepare ~bundle ~support_tools ~pdk_root ~python ~docker ~git ~resources ~wo
      (* Retain the checked frozen plan, not a new baseline read from mutable config.
         Only inventoried inputs and declared collateral are covered: tool-generated
         requests, reports, candidates and supplementary files remain mutable. *)
-     let verify_inputs () = try
+      let verify_inputs () = try
+        if macro then (
+          if hash manifest_path <> manifest_hash || hash (project ^ "/manifest.json") <> manifest_hash then
+            failwith "macro manifest changed";
+          validate_files bundle; validate_files project;
+          Macro_inputs.verify ~manifest ~pdk_root (references @ macro_references);
+          List.iter2 (fun ref evidence ->
+            if get ref "source"=s "Support_tools" &&
+               hash (safe_child (project ^ "/tt") (text (get ref "path"))) <> text (get evidence "sha256")
+            then failwith "macro staged support input changed") refs references);
        Option.iter (fun r ->
          let p = Methodology_execution_record.plan r in
          ignore (checked (Methodology_execution_service.check ~bundle:project

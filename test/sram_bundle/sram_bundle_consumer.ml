@@ -18,18 +18,50 @@ module Design = struct
     ; uio_oe = Signal.zero 8 }
 end
 
+module Single_design = struct
+  module I = Tt_cmos5l.I
+  module O = Tt_cmos5l.O
+  let name = "tt_um_segmented_sram_fixture"
+  let create context (i : _ I.t) =
+    let read_data = Single_port_ram.create context ~name:"program"
+      (Single_port_ram.Config.create_exn ~width:16 ~depth:256 ~read_latency:1)
+      ~clock:i.clk ~enable:i.ena ~write_enable:i.rst_n ~address:i.ui_in
+      ~write_data:(Signal.concat_msb [i.ui_in; i.uio_in]) in
+    { O.uo_out = Signal.sel_bottom read_data ~width:8
+    ; uio_out = Signal.zero 8; uio_oe = Signal.zero 8 }
+end
+
+let first_stage = Timing.Stage.create ~id:"fixture_first" ~chain:"fixture" ~index:0
+let second_stage = Timing.Stage.create ~id:"fixture_second" ~chain:"fixture" ~index:1
+
+module Linked_single_design = struct
+  include Single_design
+  let create context (i : _ I.t) =
+    let output = Single_design.create context i in
+    let spec = Signal.Reg_spec.create ~clock:i.clk () in
+    let first = Signal.reg spec i.ena in
+    let second = Signal.reg spec first in
+    Elaboration.Context.register_timing_stage_exn context ~stage:first_stage ~q:first;
+    Elaboration.Context.register_timing_stage_exn context ~stage:second_stage ~q:second;
+    { output with O.uio_out = Signal.(uresize (first |: second) ~width:8) }
+end
+
 let id = Resource.Id.of_string_exn
 let intent name x = Macro_intent.tt_cmos5l_r0 ~resource:(id name) ~x_um:x ~y_um:81. ()
-let project ?(operation = Flow.Operation.Synthesis) ?(macros = [intent "left" 42.; intent "right" 400.]) ?(overrides = []) () =
+let project ?(single = false) ?(linked = false) ?(operation = Flow.Operation.Synthesis) ?(macros = [intent "left" 42.; intent "right" 400.]) ?(overrides = []) () =
   Project.create ~name:"sram_bundle_fixture"
     ~metadata:{ title="Public SRAM"; author="test"; description="Exact production resource bundle" }
-    ~design:(module Design)
+    ~design:(if linked then (module Linked_single_design : Project.Design)
+      else if single then (module Single_design : Project.Design) else (module Design : Project.Design))
     ~target:{ harness=Tiny_tapeout { tiles=T6x4 }; technology=Technology.ihp_sg13cmos5l }
     ~flow:(Flow.librelane ~macros ~overrides operation)
     ~clocks:[{port="clk";period=Time_float.Span.of_ns 20.}]
+    ~timing:(if linked then Timing.create ~stages:[first_stage; second_stage]
+      ~exceptions:[Timing.Exception.async_capture ~id:"fixture_capture" ~reason:"negative PT7 fixture"
+        ~source:(Timing.Port.input "ena") ~first_stage] () else Timing.create ())
     ~pinout:(List.concat_map [Pinout.Bank.Ui; Uo; Uio] ~f:(fun bank ->
       List.init 8 ~f:(fun bit -> {Pinout.bank; bit; description="fixture"})))
-    ~source_inputs:["generator.ml"]
+    ~source_inputs:(if single then ["test/sram_bundle/sram_bundle_consumer.ml"] else ["generator.ml"])
     ~policy:(Resource_policy.create ~default:Exact [] |> ok_exn) ()
 ;;
 
@@ -71,7 +103,14 @@ let check_resolution () =
 
 let () =
   match Sys.get_argv () with
-   | [|_; ("emit" | "emit-physical" as mode); root; output|] ->
+   | [|_; ("emit-single-physical" | "emit-single-synthesis" | "emit-single-linked" as mode); root; output|] ->
+     let physical = not (String.equal mode "emit-single-synthesis") in
+     let p = project ~single:true ~linked:(String.equal mode "emit-single-linked") ~macros:[intent "program" 40.]
+       ~operation:(if physical then Hardening else Synthesis) () |> ok_exn in
+     let inputs = { Target.Inputs.reference_cmos5l_6x4 with
+       floorplan_sha256 = Flow.Plan_json.sha256 "floorplan fixture" } in
+     Project.emit_bundle ~inputs p ~source_root:root ~output_dir:output |> ok_exn |> ignore
+    | [|_; ("emit" | "emit-physical" as mode); root; output|] ->
     check_resolution ();
      let project = project ~operation:(if String.equal mode "emit-physical" then Hardening else Synthesis) () |> ok_exn in
     let a = Project.render_bundle project ~source_root:root |> ok_exn in

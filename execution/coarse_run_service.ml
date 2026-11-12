@@ -213,15 +213,8 @@ let run ~bundle ~support_tools ~pdk_root ~python ~resources ~environment ~runs ~
           let relative = text (get entry "path") and expected = text (get entry "sha256") in
           if hash (safe_child bundle relative) <> expected || hash (safe_child project relative) <> expected
           then failwith ("macro bundle input changed during execution: " ^ relative)) (array (get manifest "files"));
-        List.iter (fun reference -> check_cancel ();
-          let path = text (get reference "path") in
-          if hash path <> text (get reference "sha256") then failwith ("macro/target collateral changed during execution: " ^ path);
-          if String.starts_with ~prefix:"macro:" (text (get reference "role")) then (
-            let declared = text (get reference "reference") in
-            let relative = String.sub declared 9 (String.length declared - 9) in
-            let current = safe_child pdk_root (technology ^ "/" ^ relative) in
-            if current <> path then failwith ("macro collateral alias changed during execution: " ^ declared)))
-          (array (get report "references"))) in
+         check_cancel ();
+         Macro_inputs.verify ~phase:"during execution" ~manifest ~pdk_root (array (get report "references"))) in
        verify_inputs ();
        if pt7 then (
          let probe_directory=a.directory^"/timing-runtime-verification" in Unix.mkdir probe_directory 0o700;

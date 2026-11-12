@@ -163,7 +163,7 @@ let verify_associations
   let snapshot_fields =
     match m with
     | `Assoc xs ->
-      List.filter [ "resource_snapshot"; "timing_intent"; "timing_native_coverage"; "hardware_variant" ]
+      List.filter [ "resource_snapshot"; "timing_intent"; "timing_native_coverage"; "hardware_variant"; "macro_contract" ]
         ~f:(fun field -> List.Assoc.mem xs field ~equal:String.equal)
     | _ -> []
   in
@@ -188,7 +188,7 @@ let verify_associations
       ; "flow_configuration"
       ; "generated_settings"
       ; "requested_tools"
-       ]
+     ]
        @ snapshot_fields);
   if not (String.equal manifest (Yojson.Safe.to_string m))
   then J.fail "noncompact bundle manifest";
@@ -227,17 +227,18 @@ let verify_associations
     in
     if not (J.equal value (J.get config key))
     then J.fail "resolved setting/configuration mismatch");
-  let generated =
-    obj
-      [ "VERILOG_FILES", `List [ str ("dir::" ^ J.string (J.get m "top_module") ^ ".v") ]
+   let generated =
+     obj
+       ([ "VERILOG_FILES", `List [ str ("dir::" ^ J.string (J.get m "top_module") ^ ".v") ]
       ; "PNR_SDC_FILE", str "dir::../constraints/top.sdc"
       ; "SIGNOFF_SDC_FILE", str "dir::../constraints/top.sdc"
-      ]
+       ] @ Elaboration.Macro_bundle_inputs.generated m)
   in
   if not (J.equal generated (J.get m "generated_settings"))
   then J.fail "generated configuration mismatch";
-  J.object_ config ~fields:(keys @ [ "VERILOG_FILES"; "PNR_SDC_FILE"; "SIGNOFF_SDC_FILE" ]);
-  List.iter [ "VERILOG_FILES"; "PNR_SDC_FILE"; "SIGNOFF_SDC_FILE" ] ~f:(fun k ->
+   let generated_keys=match generated with `Assoc xs -> List.map xs ~f:fst | _ -> assert false in
+   J.object_ config ~fields:(keys @ generated_keys);
+   List.iter generated_keys ~f:(fun k ->
     if not (J.equal (J.get config k) (J.get generated k))
     then J.fail "generated setting/config mismatch");
   List.iter effective_parameters ~f:(fun (p : E.t) ->
@@ -288,14 +289,20 @@ let make
            (List.filter stages ~f:(fun s -> not (Flow.Stage.equal s Flow.Stage.Timing)))
        else Flow.Recipe.create stages)
   in
-  let m =
+   let m =
     verify_associations
       ~project_name
       ~bundle_identity
       ~manifest
       ~configuration
-      effective_parameters
-  in
+       effective_parameters
+   in
+   if List.Assoc.mem (match m with `Assoc xs -> xs | _ -> []) "macro_contract" ~equal:String.equal then (
+     if legacy || List.mem stages Flow.Stage.Signoff ~equal:Flow.Stage.equal then
+       J.fail "named segmented SRAM Signoff is unsupported; maximum endpoint is Timing";
+     if List.exists ["timing_intent";"timing_native_coverage";"timing_physical_qualification"]
+       ~f:(fun key -> List.Assoc.mem (match m with `Assoc xs -> xs | _ -> []) key ~equal:String.equal)
+     then J.fail "named segmented SRAM does not support PT7 linked timing intent or exceptions");
   let configurable =
     Hardcaml_asic_flow_domain.Methodology.configurable
       (Hardcaml_asic_flow_domain.Catalog.Entry.methodology

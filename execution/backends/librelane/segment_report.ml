@@ -9,10 +9,15 @@ let str s = codec (J.string s)
 let text = function J.String s -> s | _ -> fail "report string required"
 let exact j fields = codec (J.exact_object j ~fields)
 let of_json ~(request:Backend_protocol.request) raw = try
-  let xs = exact raw ["status"; "boundary"; "from"; "source_boundary"; "to"; "run_dir";
-    "returned_steps"; "bridge_sha256"; "metrics"; "metric_origin"; "configured_gates";
-    "gate_evidence"; "acceptance"] in
-  let get k = List.assoc k xs in
+   let macro=match raw with J.Object xs -> List.mem_assoc "macro_profile" xs | _ -> false in
+   let xs = exact raw (["status"; "boundary"; "from"; "source_boundary"; "to"; "run_dir";
+     "returned_steps"; "bridge_sha256"; "metrics"; "metric_origin"; "configured_gates";
+     "gate_evidence"; "acceptance" ] @ if macro then ["macro_profile";"macro_evidence"] else []) in
+   let get k = List.assoc k xs in
+   if macro then (
+     if get "macro_profile" <> str Macro_contract.segmented_profile then fail "unsupported macro segment profile";
+     match Checkpoint.macro_evidence ~boundary:request.boundary (get "macro_evidence") with
+     | Ok _ -> () | Error e -> fail e);
   let expect k v = if get k <> v then fail ("inconsistent segment report: " ^ k) in
   let cap = Stage.capability request.boundary in
   let from = Option.bind request.source_boundary (fun s -> (Stage.capability s).successor) in

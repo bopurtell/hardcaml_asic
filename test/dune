@@ -276,7 +276,32 @@
        segment_service_engine.py (source_tree ../flow))
  (action (run python3 -B %{dep:check_segment_service.py}
    --consumer %{exe:segment_service_consumer.exe}
-   --service %{exe:../bin/experimental_segment_execute.exe})))
+    --service %{exe:../bin/experimental_segment_execute.exe})))
+
+; Pure virtualenv-activation regression; no native helpers or external tools.
+(rule
+ (alias qualifier-venv)
+ (deps test_qualify_sram_segmented.py qualify_sram_segmented.py)
+ (action (run python3 -B %{dep:test_qualify_sram_segmented.py})))
+
+(alias
+ (name runtest)
+ (deps (alias qualifier-venv)))
+
+; Explicit integration corpus. Uses already-built consumers and fake native APIs;
+; no nested Dune, installation, PDK provisioning, or physical tools.
+(rule
+ (alias sram-segmented)
+ (deps check_sram_segmented.py stage_preparation_engine.py segment_service_engine.py
+       segment_service_fixture.py bridge_protocol_fixture.py
+       sram_bundle/sram_bundle_consumer.ml (source_tree ../flow))
+ (action (run python3 -B %{dep:check_sram_segmented.py}
+   --emitter %{exe:sram_bundle/sram_bundle_consumer.exe}
+   --cli %{exe:../bin/experimental_stages.exe}
+   --plan-inspect %{exe:../bin/experimental_plan_inspect.exe}
+   --inspector %{exe:../bin/experimental_checkpoint_inspect.exe}
+   --finalizer %{exe:../bin/experimental_finalization.exe}
+   --resources ../flow/hardcaml_asic_flow)))
 
 (executable
  (name runner_consumer)
@@ -309,7 +334,8 @@
  (modules checkpoint_consumer)
  (libraries hardcaml_asic.execution))
 
-; Explicit alias requires the retained read-only physical fixture trees in /tmp.
+; Deterministic reader corpus. Real retained experiments are explicit optional
+; --retained-root arguments to check_checkpoints.py, never machine-local prerequisites.
 (rule
  (alias ocaml-checkpoints)
  (deps reference_harness.py check_checkpoints.py (source_tree ../flow) ../toolchain.lock)

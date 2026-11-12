@@ -1,6 +1,6 @@
 """Explicitly transported isolated-runtime bridge; official Classic APIs only.
 
-No host imports, substitutions, step hooks or alternate sequencing engine. The
+No host imports, step hooks or alternate sequencing engine. The
 host owns the process and publication. This module emits a candidate only after
 Flow.start (including final snapshot and deferred checks) returns successfully.
 """
@@ -11,6 +11,7 @@ import json
 import math
 from pathlib import Path
 import types
+import importlib.util
 
 from librelane.common import Path as ToolPath
 from librelane.flows import Flow
@@ -31,6 +32,8 @@ RESTART_TARGETS = {"synthesis": ("floorplan", "placement"), "floorplan": ("place
 # This literal is part of the bridge digest used by checkpoint compatibility.
 # Load only these verified bytes, including under Python -I (no sys.path edits).
 PROTOCOL_SHA256 = "eb6490db856f551ffe2ab35ea872bdc85c86801339e67a9d5bdf427238b25ae1"
+MACRO_PROFILE = "stock256x16_r0_through_timing_v1"
+PHYSICAL_RUNTIME_SHA256 = "20b4288ce4ecb89577454edcaa489583fd8eeaed14f663888b59c9eba7fa9048"
 
 
 def protocol_module():
@@ -78,8 +81,8 @@ def closure(config, project, pdk_root):
     Inventory typed config paths recursively (including corners/lists), all
     bundle inputs and support references, and the entire target PDK tree to cover
     indirect Tcl/collateral reads. Runtime-only files are tied to the exact image.
-    The stock macro is supported for fresh synthesis only. Its typed paths and
-    generated stub participate in the same conservative closure as other inputs.
+     The bounded macro profile includes its transported helper bytes. Produced
+     PDN evidence is deliberately separate from this stable input closure.
     """
     validate_macro_bundle(project)
     paths = set()
@@ -119,14 +122,16 @@ def closure(config, project, pdk_root):
     tree(pdk_root / manifest["target"]["technology"])
     if manifest.get("macro_contract", {}).get("execution") == "fresh_full":
         tree(pdk_root / "ihp-sg13g2/libs.tech/klayout/tech/drc")
+        tree(project / "bridge/physical_runtime.py")
     return {p: record(p) for p in sorted(paths)}
 
 
 def validate_macro_bundle(project):
     """Validate the raw public bundle before LibreLane expands paths/defaults.
 
-    This admits no custom macros or physical checkpoint transitions. Supplying
-    CDL is an identified dependency, not a transistor-LVS claim.
+    This admits no custom macros. Execution/transition admission is separately
+    bounded by macro_runtime and schema3. Supplying CDL is an identified
+    dependency, not a transistor-LVS claim.
     """
     manifest = json.loads((project / "manifest.json").read_text())
     raw = json.loads((project / "src/config.json").read_text())
@@ -294,6 +299,95 @@ def validate_macro_bundle(project):
     return True
 
 
+def macro_runtime(project, boundary):
+    """sram_segmented1: single stock schema2 Hardening, through ordinary STA.
+
+    Signoff/LVS adaptation and PT7 are intentionally not part of this profile.
+    The existing coarse helper validates the same physical inputs, from pinned
+    transported bytes. It never runs EDA during preparation/publication checks.
+    """
+    manifest = json.loads((project / "manifest.json").read_text())
+    contract = manifest["macro_contract"]
+    if (contract.get("schema_version") != 2 or contract.get("execution") != "fresh_full"
+            or manifest.get("operation") != "Hardening"):
+        raise ValueError("segmented SRAM requires schema2 Hardening; schema1 physical continuation is unsupported")
+    if len(contract["macros"]) != 1:
+        raise ValueError("segmented SRAM supports exactly one stock256x16 R0 macro")
+    if boundary == "signoff":
+        raise ValueError("segmented SRAM Signoff is unsupported; maximum endpoint is Timing")
+    if any(manifest.get(k) is not None for k in
+           ("timing_intent", "timing_native_coverage", "timing_physical_qualification")):
+        raise ValueError("segmented SRAM does not support PT7 linked timing intent or exceptions")
+    helper = project / "bridge/physical_runtime.py"
+    if digest(helper) != PHYSICAL_RUNTIME_SHA256:
+        raise ValueError("transported macro runtime hash mismatch")
+    spec = importlib.util.spec_from_file_location("segmented_macro_runtime", helper)
+    runtime = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(runtime)
+    runtime.validate_plan(project)
+    return manifest
+
+
+def macro_evidence(project, boundary, entries, *, publication=None):
+    """Validate bounded output evidence independently of State/input closure.
+
+    Each publication copies these files into its own views/ inventory. Producer
+    tag/boundary survive transitively; no dependency on the original PDN run.
+    publication maps final paths to private staging paths before promotion.
+    """
+    fields = {"kind", "path", "sha256", "bytes", "producer_boundary", "producer_tag"}
+    expected = 0 if boundary in ("synthesis", "floorplan") else 1
+    if not isinstance(entries, list) or len(entries) != expected:
+        raise ValueError("missing/duplicate transitive macro PDN evidence")
+    plan = json.loads((project / "physical/macro-plan.json").read_text())
+    for entry in entries:
+        if (set(entry) != fields or entry["kind"] != "macro_power_geometry"
+                or entry["producer_boundary"] != "placement"
+                or not isinstance(entry["producer_tag"], str) or not entry["producer_tag"]
+                or "/" in entry["producer_tag"]):
+            raise ValueError("unsupported macro evidence producer")
+        path = Path(entry["path"])
+        if not path.is_absolute():
+            raise ValueError("absolute macro evidence path required")
+        if publication is not None:
+            staging, location = publication
+            relative = path.relative_to(Path(location) / "views")
+            path = staging / "views" / relative
+        if record(path) != {k: entry[k] for k in ("sha256", "bytes")}:
+            raise ValueError("macro PDN evidence changed")
+        geometry = json.loads(path.read_text())
+        if (geometry.get("schema_version") != 1 or geometry.get("strategy") != plan["strategy"]
+                or not isinstance(geometry.get("dbu_per_um"), int) or geometry["dbu_per_um"] <= 0
+                or not isinstance(geometry.get("manufacturing_grid_dbu"), int)
+                or geometry["manufacturing_grid_dbu"] <= 0):
+            raise ValueError("unsupported macro power geometry")
+        macros = geometry.get("macros", [])
+        if len(macros) != 1:
+            raise ValueError("macro power geometry inventory mismatch")
+        macro, declared = macros[0], plan["macros"][0]
+        if any(macro.get(k) != declared[k] for k in ("resource", "instance", "module")):
+            raise ValueError("macro power geometry resource mismatch")
+        units = geometry["dbu_per_um"]
+        x, y = declared["location_um"]
+        expected_footprint = [round(v * units) for v in (x, y, x + 236.8, y + 118.78)]
+        if (macro.get("orientation") != "R0" or macro.get("footprint_dbu") != expected_footprint
+                or macro.get("halo_dbu") != round(declared["halo_um"] * units)):
+            raise ValueError("macro power geometry placement mismatch")
+        contacts = macro.get("contacts", [])
+        if len(contacts) != 3 or {c.get("pin") for c in contacts} != {"VDD!", "VDDARRAY!", "VSS!"}:
+            raise ValueError("macro power geometry supply contacts missing")
+        for contact in contacts:
+            net = "VGND" if contact["pin"] == "VSS!" else "VPWR"
+            if (contact.get("net") != net
+                    or type(contact.get("minimum_clearance_dbu")) is not int
+                    or contact["minimum_clearance_dbu"] < round(.6 * units)
+                    or contact.get("measured_minimum_clearance_dbu", -1) < contact["minimum_clearance_dbu"]):
+                raise ValueError("macro power geometry contact/net/clearance mismatch")
+        if {p.get("net") for p in geometry.get("public_pins", [])} != {"VPWR", "VGND"}:
+            raise ValueError("macro public supply pins missing")
+    return entries
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("request", type=Path)
@@ -327,13 +421,14 @@ def execute(request):
     validating = request["operation"] == "validate_publication"
     macro = validate_macro_bundle(project)
     if macro:
-        raise ValueError("SRAM segmented checkpoints are unsupported; use run --stage synthesis (fresh coarse synthesis)")
+        macro_runtime(project, boundary)
     if not validating:
         candidate.mkdir()  # fresh output only, never read a stale success file
     classic = Flow.factory.get("Classic")
-    flow = classic(str(project / "src/config.json"), pdk_root=str(pdk),
-                   config_override_strings=["OPENROAD_THREADS=6", "STA_THREADS=1",
-                                            "KLAYOUT_DRC_THREADS=6", "KLAYOUT_XOR_THREADS=6"])
+    overrides = ["OPENROAD_THREADS=6", "STA_THREADS=1", "KLAYOUT_DRC_THREADS=6", "KLAYOUT_XOR_THREADS=6"]
+    if macro:
+        overrides += ["MAX_SLEW_VIOLATION_CORNERS=*", "MAX_CAP_VIOLATION_CORNERS=*"]
+    flow = classic(str(project / "src/config.json"), pdk_root=str(pdk), config_override_strings=overrides)
     resolved = flow.config.dumps()
     dependencies = closure(flow.config, project, pdk)
     if validating:
@@ -341,8 +436,14 @@ def execute(request):
             raise ValueError("publication resolved configuration mismatch")
         if dependencies != json.loads((candidate / "closure.json").read_text()):
             raise ValueError("publication config/input/collateral/runtime closure mismatch")
+        if macro:
+            published = json.loads((candidate / "manifest.json").read_text())
+            if published.get("schema_version") != 3 or published.get("macro_profile") != MACRO_PROFILE:
+                raise ValueError("macro publication requires checkpoint schema3 profile")
+            macro_evidence(project, boundary, published["macro_evidence"],
+                           publication=(candidate, published["location"]))
         return  # no Flow.start; validation cannot produce readiness or artifacts
-    initial, frm = None, None
+    initial, frm, evidence = None, None, []
     if request["checkpoint"] is not None:
         source = Path(request["checkpoint"])
         if resolved != (source / "resolved.json").read_text():
@@ -354,6 +455,12 @@ def execute(request):
         ids = [cls.id for cls in flow.Steps]
         source_boundary = request["source_boundary"]
         source_manifest = json.loads((source / "manifest.json").read_text())
+        if macro:
+            if source_manifest.get("schema_version") != 3 or source_manifest.get("macro_profile") != MACRO_PROFILE:
+                raise ValueError("macro continuation requires checkpoint schema3 profile")
+            if boundary not in source_manifest.get("restart_targets", []):
+                raise ValueError("untested macro checkpoint transition")
+            evidence = macro_evidence(project, source_boundary, source_manifest["macro_evidence"])
         if source_manifest["boundary"] != source_boundary or boundary not in RESTART_TARGETS.get(source_boundary, ()):
             raise ValueError("unsupported checkpoint transition")
         frm = ids[ids.index(ENDPOINTS[source_boundary]) + 1]
@@ -370,6 +477,14 @@ def execute(request):
         raise ValueError("endpoint was not reached")
     if initial is not None and flow.step_objects[0].id != frm:
         raise ValueError("successor checks were not preserved")
+    if macro:
+        if boundary == "placement":
+            paths = list(Path(flow.run_dir).glob("*-openroad-generatepdn/macro-power-geometry.json"))
+            if len(paths) != 1:
+                raise ValueError("missing/duplicate executed macro PDN geometry")
+            evidence = [{"kind": "macro_power_geometry", "path": str(paths[0]), **record(paths[0]),
+                         "producer_boundary": "placement", "producer_tag": request["tag"]}]
+        macro_evidence(project, boundary, evidence)
     (candidate / "state.json").write_text(state.dumps())
     (candidate / "resolved.json").write_text(resolved)
     (candidate / "closure.json").write_text(json.dumps(dependencies, allow_nan=False))
@@ -382,7 +497,9 @@ def execute(request):
               "configured_gates": {pattern: {var: flow.config[var] for var in variables}
                                    for pattern, variables in flow.gating_config_vars.items()},
               "gate_evidence": "configured Classic gates; returned_steps are successful outer step objects, not body/skip provenance",
-              "acceptance": "not_evaluated"}
+               "acceptance": "not_evaluated"}
+    if macro:
+        report.update(macro_profile=MACRO_PROFILE, macro_evidence=evidence)
     (candidate / "segment.json").write_text(json.dumps(report, allow_nan=False, indent=2) + "\n")
 
 

@@ -25,7 +25,30 @@ let describe () =
       "results_defaults",`Assoc ["root",`String "<caller-cwd>/_flow_results";"operations",`String "<results-root>/operations";
         "runs",`String "<results-root>/runs";"stage_observations",`String "<resolved-workspace-parent>/observations"];
       "capabilities",`Assoc [
-            "namedflow1",`Bool true;
+             "namedflow1",`Bool true;
+             (* Stable negotiation contract. This is implementation support, not
+                physical qualification or acceptance of a particular design. *)
+             "sram_segmented1",`Bool true;
+             "sram_segmented1_scope",`Assoc [
+               "schema_version",`Int 1;
+               "profile",`String "stock256x16_r0_through_timing_v1";
+               "macro",`String "RM_IHPSG13_1P_256x16_c2_bm_bist";
+               "max_instances",`Int 1;"orientation",`String "R0";
+               "technology",`String "ihp-sg13cmos5l";
+               "bundle_macro_schema",`Int 2;"operation",`String "Hardening";
+               "checkpoint_schema",`Int 3;"closure_scope",`String "path_bound";
+               "endpoints",strings ["synthesis";"floorplan";"placement";"cts";"routing";"timing"];
+               "restart",`Bool true;"named",`Bool true;"named_fresh_only",`Bool true;
+               "restart_kind",`String "explicit_stages_same_workspace";
+               "restart_targets",`Assoc ["synthesis",strings ["floorplan"];
+                 "floorplan",strings ["placement"];"placement",strings ["cts"];
+                 "cts",strings ["routing"];"routing",strings ["timing"];"timing",strings []];
+               "signoff",`Bool false;"finalization",`Bool false;"acceptance",`Bool false;
+               "pt7_linked_exceptions",`Bool false;"schema1_physical_continuation",`Bool false;
+               "relocation",`Bool false;"archive",`Bool false;
+               "workers",`Int 6;"sta_threads",`Int 1;
+               "timing_scope",`String "ordinary_extracted_sta_not_pt7_linked_intent";
+               "physical_qualification",`String "not_run"];
             "synthesis_collection1",`Assoc ["schema_version",`Int 1;
               "profile",`String "synthesis-total-tasks-v1";"total_container_tasks",`Int 6;
               "fresh_only",`Bool true;"acceptance",`Bool false;
