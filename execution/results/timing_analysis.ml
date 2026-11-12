@@ -55,10 +55,70 @@ let same a b =
 
 type reader =
   { mutable bytes : int
+  ; mutable report_bytes : int
   ; mutable sources : (string * string) list
   }
 
-let reader () = { bytes = 0; sources = [] }
+let reader () = { bytes = 0; report_bytes = 0; sources = [] }
+
+(* Native reports are verbose, not metadata. Bound disk work separately and never
+   materialize their contents (or a list proportional to their line count). *)
+let report r ?root ?line p =
+  require (List.length r.sources < 512) "source count bound exceeded";
+  require (Unix.realpath p = p) "noncanonical source or symlink";
+  Option.iter (fun root -> require (within root p) "source escapes retained root") root;
+  let fd = Unix.openfile p [ Unix.O_RDONLY; Unix.O_NONBLOCK ] 0 in
+  let ic = Unix.in_channel_of_descr fd in
+  let hash = Cryptokit.Hash.sha256 () in
+  Fun.protect
+    ~finally:(fun () ->
+      close_in_noerr ic;
+      hash#wipe)
+    (fun () ->
+      let before = Unix.fstat fd in
+      require
+        (before.st_kind = Unix.S_REG && before.st_size <= 32 * 1024 * 1024)
+        "report source kind/size";
+      r.report_bytes <- r.report_bytes + before.st_size;
+      require (r.report_bytes <= 256 * 1024 * 1024) "aggregate report byte bound exceeded";
+      let chunk = Bytes.create 65536 and pending = Buffer.create 256 in
+      let count = ref 0 and number = ref 1 in
+      let emit () =
+        Option.iter (fun f -> f !number (Buffer.contents pending)) line;
+        Buffer.clear pending;
+        incr number
+      in
+      let rec loop () =
+        let n = input ic chunk 0 (Bytes.length chunk) in
+        if n <> 0 then (
+          count := !count + n;
+          require (!count <= before.st_size) "report source grew during capture";
+          hash#add_substring chunk 0 n;
+          (match line with
+           | None -> ()
+           | Some _ ->
+             for i = 0 to n - 1 do
+               let c = Bytes.get chunk i in
+               if c = '\n'
+               then emit ()
+               else (
+                 require (Buffer.length pending < 16384) "report line byte bound exceeded";
+                 require (Char.code c >= 32 || c = '\t' || c = '\r') "binary timing log";
+                 Buffer.add_char pending c)
+             done);
+          loop ())
+      in
+      loop ();
+      if Buffer.length pending > 0 then emit ();
+      require
+        (!count = before.st_size
+         && same before (Unix.fstat fd) && same before (Unix.stat p) && Unix.realpath p = p)
+        "source changed during capture";
+      let digest = Cryptokit.transform_string (Cryptokit.Hexa.encode ()) hash#result in
+      r.sources <- (p, digest) :: r.sources)
+;;
+
+let is_report p = List.mem (Filename.basename p) [ "sta.log"; "max.rpt"; "min.rpt" ]
 
 let read r ?root ?(limit = 32 * 1024 * 1024) p =
   require (List.length r.sources < 512) "source count bound exceeded";
@@ -96,10 +156,15 @@ let evidence r ~root p =
 let source r p = obj [ "path", str p; "sha256", str (List.assoc p r.sources) ]
 
 let recheck r =
+  let verification = reader () in
   List.iter
     (fun (p, h) ->
+      let actual =
+        if is_report p then (report verification p; List.assoc p verification.sources)
+        else J.sha256_bytes (read verification p)
+      in
       require
-        ((checked (Checkpoint.file_record p)).sha256 = h && Unix.realpath p = p)
+        (actual = h && Unix.realpath p = p)
         "retained source changed")
     r.sources
 ;;
@@ -275,12 +340,29 @@ let collect r run_dir =
               ; "hold_goal", str "unknown"
               ]
           else (
-            let log = read r ~root:run_dir log_path in
-            let line_count =
-              String.fold_left (fun n c -> if c = '\n' then n + 1 else n) 1 log
+            let keys =
+              List.concat_map
+                (fun mode ->
+                  List.map
+                    (fun suffix -> "timing__" ^ mode ^ suffix ^ "__corner:" ^ corner)
+                    [ "__ws"; "_vio__count" ])
+                [ "setup"; "hold" ]
             in
-            require (line_count <= 262144) "log line bound exceeded";
-            let lines = String.split_on_char '\n' log in
+            let observed = Hashtbl.create 4 in
+            let words = Str.regexp "[ \t]+" in
+            report r ~root:run_dir
+              ~line:(fun number line ->
+                match Str.split words line with
+                | tag :: key :: rest
+                  when List.mem key keys && String.starts_with ~prefix:"%OL_METRIC" tag ->
+                  (* Saturate duplicates, including malformed repeats. Never let a
+                     valid prefix hide conflicting evidence at the end of a log. *)
+                  let value = match rest with [ v ] -> v | _ -> "" in
+                  let prior = Option.value (Hashtbl.find_opt observed key) ~default:[] in
+                  if List.length prior < 2
+                  then Hashtbl.replace observed key ((number, tag, value) :: prior)
+                | _ -> ())
+              log_path;
             let lib = efield (efield output "lib") corner in
             let unit_ok =
               match lib with
@@ -294,7 +376,7 @@ let collect r run_dir =
             List.iter
               (fun name ->
                 let p = corner_dir ^ "/" ^ name in
-                if not (absent p) then ignore (read r ~root:run_dir p))
+                if not (absent p) then report r ~root:run_dir p)
               [ "max.rpt"; "min.rpt" ];
             let metric mode kind =
               let key =
@@ -305,14 +387,7 @@ let collect r run_dir =
                 ^ corner
               in
               let tokens =
-                List.filter_map
-                  (fun (i, line) ->
-                    match Str.split (Str.regexp "[ \t]+") line with
-                    | [ tag; k; v ]
-                      when k = key && (tag = "%OL_METRIC_F" || tag = "%OL_METRIC_I") ->
-                      Some (i + 1, tag, v)
-                    | _ -> None)
-                  (List.mapi (fun i s -> i, s) lines)
+                Option.value (Hashtbl.find_opt observed key) ~default:[]
               in
               let raw_value = efield (efield output "metrics") key in
               let value =
@@ -428,7 +503,7 @@ let collect r run_dir =
       ]
 ;;
 
-let publish ~execution ~transport_records =
+let capture ~execution ~transport_records =
   let r = reader () in
   let execution_raw = json r execution in
   require
@@ -447,7 +522,7 @@ let publish ~execution ~transport_records =
   let stage = Execution_plan.Stage.to_string producer_stage in
   let requested = List.mem producer_stage (Execution_plan.Stage_plan.sequence plan) in
   if not requested
-  then ()
+  then None
   else (
     let selected =
       List.filter_map
@@ -536,20 +611,27 @@ let publish ~execution ~transport_records =
           | _ -> assert false)
          @ [ "source_digest", str digest ])
     in
-    let bytes = J.canonical result ^ "\n" in
-    require (String.length bytes <= 1024 * 1024) "observation byte bound exceeded";
-    let destination = path execution in
-    let temporary =
-      Filename.temp_file ~temp_dir:(Filename.dirname execution) ".timing-analysis-" ".tmp"
-    in
-    Fun.protect
-      ~finally:(fun () -> if Sys.file_exists temporary then Unix.unlink temporary)
-      (fun () ->
-        let oc = open_out_bin temporary in
-        Fun.protect
-          ~finally:(fun () -> close_out_noerr oc)
-          (fun () -> output_string oc bytes);
-        Unix.link temporary destination))
+    Some result)
+;;
+
+let publish ~execution ~transport_records =
+  Option.iter
+    (fun result ->
+      let bytes = J.canonical result ^ "\n" in
+      require (String.length bytes <= 1024 * 1024) "observation byte bound exceeded";
+      let destination = path execution in
+      let temporary =
+        Filename.temp_file ~temp_dir:(Filename.dirname execution) ".timing-analysis-" ".tmp"
+      in
+      Fun.protect
+        ~finally:(fun () -> if Sys.file_exists temporary then Unix.unlink temporary)
+        (fun () ->
+          let oc = open_out_bin temporary in
+          Fun.protect
+            ~finally:(fun () -> close_out_noerr oc)
+            (fun () -> output_string oc bytes);
+          Unix.link temporary destination))
+    (capture ~execution ~transport_records)
 ;;
 
 (* Metadata is immutable; native sources are independently revalidated by inspection.
@@ -630,9 +712,12 @@ let validate_sources j =
   List.iter
     (fun ref ->
       let p = text (get ref "path") in
-      let bytes = read r p in
+      let hash =
+        if is_report p then (report r p; List.assoc p r.sources)
+        else J.sha256_bytes (read r p)
+      in
       require
-        (J.sha256_bytes bytes = text (get ref "sha256"))
+        (hash = text (get ref "sha256"))
         "observation source changed")
     (array (get j "inventory"));
   recheck r
@@ -650,4 +735,30 @@ let load_file ?expected_record execution =
   let result = load ~execution ~execution_raw in
   recheck r;
   result
+;;
+
+let reinspect ~execution ~expected_record =
+  let original = match load_file ~expected_record execution with
+    | Some a -> a
+    | None -> invalid_arg "timing reinspection requires a retained observation"
+  in
+  validate_sources original;
+  let frozen = text (get original "execution_file") in
+  let terminal = text (get original "transport_terminal") in
+  let request_id = text (get original "request_id") in
+  require (safe_component request_id) "invalid retained request identity";
+  let launch = Filename.dirname frozen ^ "/" ^ request_id ^ "-transport.json" in
+  List.iter (fun p ->
+    require (List.exists (fun ref -> get ref "path" = str p) (array (get original "inventory")))
+      "reinspection transport absent from original inventory") [launch; terminal];
+  let refreshed = match capture ~execution:frozen ~transport_records:[launch, terminal] with
+    | Some a -> a
+    | None -> invalid_arg "timing reinspection did not select a timing producer"
+  in
+  List.iter (fun key -> require (get refreshed key = get original key)
+    ("reinspection association mismatch: " ^ key))
+    ["execution_file"; "execution_sha256"; "attempt_id"; "occurrence_id";
+     "analysis_id"; "stage"; "request_id"; "request_sha256"; "request"; "transport_terminal"];
+  validate_sources refreshed;
+  original, refreshed
 ;;

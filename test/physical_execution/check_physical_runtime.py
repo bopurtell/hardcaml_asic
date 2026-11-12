@@ -262,7 +262,7 @@ class PhysicalPolicy(unittest.TestCase):
         self.assertEqual(collect()["checks"]["max_slew"]["status"], "fail")
 
     def test_real_report_gds_cdl_evidence_seams_and_negatives(self):
-        project, pdk = self.root / "project", self.root / "pdk"
+        project, pdk = self.root / "run/project", self.root / "pdk"
         flow = project / "runs/asic"
         plan = {"schema_version": 1, "strategy": "cmos5l_m4_edge_access_v1", "plan_file": "physical/macro-plan.json",
                 "pdn_tcl": "physical/pdn.tcl", "checking_profile": "cmos5l_real_gds_v1",
@@ -351,6 +351,22 @@ class PhysicalPolicy(unittest.TestCase):
             self.assertEqual(evidence["status"], "pass")
             self.assertEqual(evidence["internal_device_lvs"], "not_verified")
             self.assertIn(str(raw_magic.relative_to(flow)), evidence["artifacts"])
+            independent = self.root / "independent-recheck"
+            independent.mkdir()
+            frozen = {str(p): p.read_bytes() for p in project.rglob("*") if p.is_file()}
+            with patch.object(runtime, "retained_obstruction_controls", return_value={"status": "fixture_disposition"}), \
+                 patch.object(runtime, "obstruction_contact_attribution", return_value=[]):
+                separate = runtime.check(project, pdk, evidence_output=independent, magic_control_dir=self.root / "controls")
+            self.assertFalse(separate["provider_acceptance"])
+            self.assertEqual(separate["record_kind"], "independent_physical_recheck_not_provider_acceptance")
+            self.assertTrue((independent / "physical-checks.json").is_file())
+            self.assertEqual(frozen, {str(p): p.read_bytes() for p in project.rglob("*") if p.is_file()})
+            with self.assertRaisesRegex(ValueError, "outside original project"):
+                runtime.check(project, pdk, evidence_output=flow)
+            sibling = project.parent / "would-mutate-original-run"
+            sibling.mkdir()
+            with self.assertRaisesRegex(ValueError, "outside original run"):
+                runtime.check(project, pdk, evidence_output=sibling, magic_control_dir=self.root / "controls")
             for key in ("design__lvs_error__count", "magic__illegal_overlap__count",
                         "design__max_slew_violation__count__corner:nom_typ_1p20V_25C",
                         "design__max_cap_violation__count__corner:nom_typ_1p20V_25C"):

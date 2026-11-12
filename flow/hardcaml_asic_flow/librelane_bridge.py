@@ -33,7 +33,7 @@ RESTART_TARGETS = {"synthesis": ("floorplan", "placement"), "floorplan": ("place
 # Load only these verified bytes, including under Python -I (no sys.path edits).
 PROTOCOL_SHA256 = "eb6490db856f551ffe2ab35ea872bdc85c86801339e67a9d5bdf427238b25ae1"
 MACRO_PROFILE = "stock256x16_r0_through_timing_v1"
-PHYSICAL_RUNTIME_SHA256 = "20b4288ce4ecb89577454edcaa489583fd8eeaed14f663888b59c9eba7fa9048"
+PHYSICAL_RUNTIME_SHA256 = "82139f81dceb2a24398f7834cacfe8c85ac26823f643f8124db65925cf42a0c5"
 
 
 def protocol_module():

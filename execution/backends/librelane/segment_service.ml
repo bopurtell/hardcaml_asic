@@ -15,9 +15,9 @@ type t = { workspace : string; project : string; pdk_root : string; store : stri
     verify_inputs : unit -> (unit, string) result;
     verify_resolved : string -> (unit, string) result;
    failure_exit_code : B.operation -> T.result -> int option }
-let bridge_sha256 = "37a848289286479715b7d6ac1d9aa6b3c43a8f3e205a85d6f510794daecf3295"
+let bridge_sha256 = "84014826e59384e8977e6249186aafe956af39894470ee39f44a6d348f8959f3"
 let protocol_sha256 = "eb6490db856f551ffe2ab35ea872bdc85c86801339e67a9d5bdf427238b25ae1"
-let macro_runtime_sha256 = "20b4288ce4ecb89577454edcaa489583fd8eeaed14f663888b59c9eba7fa9048"
+let macro_runtime_sha256 = "82139f81dceb2a24398f7834cacfe8c85ac26823f643f8124db65925cf42a0c5"
 exception Service_error of Runner.error
 let fail s = raise (Service_error (Runner.failure s))
 let checked = function Ok x -> x | Error s -> fail s

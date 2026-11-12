@@ -31,14 +31,14 @@ def fixture(root, case="good", outer="failed"):
     request_path = project / "request.json"
     write(request_path, request)
     request_hash = hashlib.sha256(canonical(request).encode()).hexdigest()
-    launch = root / "launch.json"
-    terminal = root / "terminal.json"
+    launch = root / "signoff-exact-request-transport.json"
+    terminal = root / "signoff-exact-request-transport-result.json"
     write(launch, dict(request_path=str(request_path), request_id=request["request_id"],
                        request_sha256=request_hash, fresh_run_dir=str(run),
                        binding=dict(image_identity=dict(image_id=IMAGE))))
     write(terminal, dict(request_id=request["request_id"], request_sha256=request_hash,
                          transport_succeeded=False, process=dict(outcome="timed_out")))
-    corners = ["fast", "slow"]
+    corners = ["fast", "slow", "extra1", "extra2"] if case == "aggregate_reports" else ["fast", "slow"]
     write(producer / "config.json", dict(meta=dict(step="OpenROAD.STAPostPNR", librelane_version="3.1.0.dev3"), STA_CORNERS=corners))
     metrics = {}
     libs = {}
@@ -98,6 +98,50 @@ def fixture(root, case="good", outer="failed"):
     if case == "oversized":
         with (producer / "config.json").open("wb") as stream:
             stream.truncate(32 * 1024 * 1024 + 1)
+    if case.startswith("large"):
+        # Retained Protemu b591d335: 280174--281300 lines, ~22.6 MB/log;
+        # metrics occur AFTER the old 262144-line fence. Use actual native
+        # point syntax and exact slow metrics, without embedding design data.
+        point = b"     1    0.023926    0.055102    0.076388    0.602765 v _17566_/X (sg13cmos5l_and2_1)\n"
+        for corner in corners:
+            d = producer / corner
+            log = d / "sta.log"
+            tail = log.read_text()
+            if case == "large_negative" and corner == "slow":
+                tail = tail.replace("timing__setup__ws__corner:slow 1.25", "timing__setup__ws__corner:slow -3.0998031685543976")
+                tail = tail.replace("timing__setup_vio__count__corner:slow 0", "timing__setup_vio__count__corner:slow 444")
+                metrics["timing__setup__ws__corner:slow"] = -3.0998031685543976
+                metrics["timing__setup_vio__count__corner:slow"] = 444
+            with log.open("wb") as stream:
+                for _ in range(281):
+                    stream.write(point * 1000)
+                stream.write((tail.rstrip("\n") if case == "large_negative" else tail).encode())
+                if corner == "slow":
+                    if case == "large_conflict":
+                        stream.write(b"%OL_METRIC_F timing__setup__ws__corner:slow -99\n")
+                    if case == "large_malformed":
+                        stream.write(b"%OL_METRIC_F timing__setup__ws__corner:slow 1.25 extra\n")
+                    if case == "large_wrong_tag":
+                        stream.write(b"%OL_METRIC_X timing__setup__ws__corner:slow -99\n")
+                    if case == "large_long_line":
+                        stream.write(b"x" * 16385)
+                    if case == "large_binary":
+                        stream.write(b"\x00\n")
+            # Hash-only reports also cross the old aggregate byte bound.
+            for name in ("max.rpt", "min.rpt"):
+                with (d / name).open("wb") as stream:
+                    for _ in range(100):
+                        stream.write(point * 1000)
+                    stream.write(path_text.encode())
+        write(producer / "state_out.json", dict(metrics=metrics, lib=libs))
+    if case == "oversized_report":
+        with (producer / "slow/max.rpt").open("wb") as stream:
+            stream.truncate(32 * 1024 * 1024 + 1)
+    if case == "aggregate_reports":
+        for corner in corners:
+            for name in ("max.rpt", "min.rpt"):
+                with (producer / corner / name).open("wb") as stream:
+                    stream.truncate(32 * 1024 * 1024)
     if case == "before_sta":
         import shutil
         shutil.rmtree(producer)
@@ -120,22 +164,34 @@ def main(args):
         return json.loads(p.stdout)
     with tempfile.TemporaryDirectory(prefix="timing-analysis-") as temporary:
         root = Path(temporary)
-        for case in ("good", "zero", "negative", "nonfinite", "inherited", "missing_corner", "unit", "conflicting_metric", "mismatched_metric", "bad_runtime", "partial", "duplicate", "wrong_meta", "stale", "before_sta", "wrong_image", "symlink", "oversized"):
+        for case in ("good", "zero", "negative", "nonfinite", "inherited", "missing_corner", "unit", "conflicting_metric", "mismatched_metric", "bad_runtime", "partial", "duplicate", "wrong_meta", "stale", "before_sta", "wrong_image", "symlink", "oversized", "large_negative", "large_conflict", "large_malformed", "large_wrong_tag", "large_long_line", "large_binary", "oversized_report", "aggregate_reports"):
             d = root / case; d.mkdir()
             execution_file, launch, terminal, producer = fixture(d, case)
             observation = call([args.consumer, execution_file, launch, terminal])
-            completed = case not in ("bad_runtime", "partial", "duplicate", "wrong_meta", "stale", "before_sta", "wrong_image", "symlink", "oversized")
+            completed = case not in ("bad_runtime", "partial", "duplicate", "wrong_meta", "stale", "before_sta", "wrong_image", "symlink", "oversized", "large_long_line", "large_binary", "oversized_report", "aggregate_reports")
             assert observation["status"] == ("completed" if completed else "unavailable"), observation
             assert observation["enclosing_status"] == "failed"
             assert observation["occurrence_id"] == "attempt/implementation.signoff"
             if completed:
                 assert observation["duration"]["seconds"] == (0 if case == "zero" else 1.575)
                 assert observation["producer"]["step_id"] == "OpenROAD.STAPostPNR-1"
-                goal = "pass" if case in ("good", "zero") else "fail" if case == "negative" else "unknown"
+                goal = "pass" if case in ("good", "zero") else "fail" if case in ("negative", "large_negative") else "unknown"
                 assert observation["timing_goal"] == goal, observation
+                if case == "large_negative":
+                    metric = next(m for m in observation["metrics"] if m["corner"] == "slow" and m["key"] == "setup_slack")
+                    assert metric["value"] == -3.0998031685543976
+                    assert metric["source"]["line"] == 281001
+                    assert metric["source"]["file"] == dict(path=str(producer / "slow/sta.log"), sha256=sha(producer / "slow/sta.log"))
+                    count = next(m for m in observation["metrics"] if m["corner"] == "slow" and m["key"] == "setup_violations")
+                    assert count["value"] == 444
             else:
                 assert observation["duration"] is None and observation["timing_goal"] == "unknown"
+                if case == "aggregate_reports":
+                    assert observation["reason"] == "timing analysis: aggregate report byte bound exceeded"
             before = snapshot(d)
+            replay = call([args.consumer, execution_file, launch, terminal, "--capture"])
+            assert replay == observation
+            assert snapshot(d) == before, "capture mutated retained evidence"
             report = call([args.report, "--target", execution_file, "--json"])
             assert report["timing_analysis"] == observation and report["execution"]["status"] == "failed"
             assert not report["checkpoints"] and report["acceptance"] == "not_evaluated"
@@ -165,6 +221,40 @@ def main(args):
                 execution_file.write_text(execution_file.read_text() + " ")
                 call([args.report, "--target", execution_file, "--json"], expected=2)
         # Cancellation preserves completed analysis too.
+        d = root / "legacy-unavailable"; d.mkdir()
+        file, launch, terminal, producer = fixture(d, "large_negative")
+        report_path = producer / "slow/max.rpt"
+        report_path.write_text(report_path.read_text().replace("1.0 slack (MET)", "-3.099803 slack (VIOLATED)"))
+        original = call([args.consumer, file, launch, terminal])
+        # Reproduce an old collector's immutable unavailable observation over
+        # the exact same source bytes, not a new execution or changed report.
+        original.update(status="unavailable", reason="timing analysis: log line bound exceeded",
+                        duration=None, producer=None, corners=[], metrics=[], timing_goal="unknown")
+        del original["source_digest"]
+        original["source_digest"] = hashlib.sha256(canonical(original).encode()).hexdigest()
+        write(Path(str(file) + ".timing-analysis.json"), original)
+        before = snapshot(d)
+        cmd = [args.public, "inspect", file, "--domain", "timing", "--stage", "signoff", "--json"]
+        assert not call(cmd)["rows"]
+        refreshed = call(cmd + ["--refresh-timing"])
+        lineage = refreshed["reinspection"]
+        assert lineage["original_status"] == "unavailable" and lineage["original_timing_goal"] == "unknown"
+        assert lineage["original_analysis_digest"] == original["source_digest"]
+        assert lineage["recomputed_analysis"]["timing_goal"] == "fail"
+        assert refreshed["analysis_digest"] == lineage["recomputed_analysis"]["source_digest"]
+        row = next(r for r in refreshed["rows"] if r["value"] == -3.099803 and r["unit"] == "ns")
+        source = json.loads(row["source"])
+        assert source["file"] == dict(path=str(report_path), sha256=sha(report_path))
+        assert source["evidence_scope"] == "read_only_reinspection_of_retained_sources_not_original_observation"
+        detail = call(cmd + ["--refresh-timing", "--row-id", row["id"], "--expected-digest", refreshed["source_digest"]])
+        assert "-3.099803" in detail["detail"] and detail["reinspection"] == lineage
+        assert call(cmd + ["--refresh-timing", "--expected-digest", refreshed["analysis_digest"]]) == refreshed
+        call(cmd + ["--refresh-timing", "--expected-digest", original["source_digest"]], expected=2)
+        call([args.public, "inspect", file, "--domain", "physical", "--stage", "signoff", "--refresh-timing", "--json"], expected=2)
+        assert call([args.report, "--target", file, "--json"])["timing_analysis"] == original
+        assert snapshot(d) == before, "public reinspection changed original sources/observation"
+        report_path.write_text("changed source")
+        call(cmd + ["--refresh-timing"], expected=2)
         d = root / "cancel"; d.mkdir()
         file, launch, terminal, _ = fixture(d, outer="interrupted")
         assert call([args.consumer, file, launch, terminal])["status"] == "completed"
@@ -180,7 +270,8 @@ def main(args):
         call([args.inspect, "--execution", copies[1], "--domain", "timing", "--stage", "signoff", "--json"], expected=2)
         capability = call([args.public, "--version", "--json"])
         assert capability["cli_contract"]["capabilities"]["timing_analysis1"] is True
-    print("timing analysis: 18 native grammar cases, cancellation, public report/index/detail, immutable source fencing and read-only queries passed")
+        assert capability["cli_contract"]["capabilities"]["timing_reinspection1"]["read_only"] is True
+    print("timing analysis: 26 native grammar cases, large native reports, cancellation, public report/index/detail, immutable source fencing and read-only capture passed")
     if args.retain_fixture:
         args.retain_fixture.mkdir()
         file, launch, terminal, _ = fixture(args.retain_fixture, case="negative")

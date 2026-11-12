@@ -132,7 +132,7 @@ let route a request =
        | "resources-inspect" -> c,fields ["run-dir"] @ presentation
        | "timing-intent-inspect" -> c,[value a "target"] @ fields ["kind"] @ presentation
       | "resource-inspect" -> c,fields ["target";"kind";"query";"resource-id";"section";"expected-digest";"artifact-id";"offset";"limit"] @ presentation
-    | "inspect" -> c,fields ["execution";"domain";"stage";"row-id";"expected-digest"] @ presentation
+     | "inspect" -> c,fields ["execution";"domain";"stage";"row-id";"expected-digest"] @ switches ["refresh-timing"] @ presentation
     | "archive" -> c,fields ["run-dir";"output"] @ switches ["list";"force"] @ presentation
     | "checkpoint-inspect" -> c,(if flag a "json" then ["--json"] else []) @ [value a "checkpoint"] @ fields ["compatibility";"restart-to"]
     | "observation" -> "observation-read",[a.query] @ (if a.query="describe" then [] else [value a "attempt"]) @

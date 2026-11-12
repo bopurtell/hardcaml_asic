@@ -4,7 +4,7 @@
     With no row_id, expected_digest pins the timing analysis digest. With row_id,
     it pins the inspection index digest as before. No runtime or EDA probes. *)
 val run : execution:string -> domain:string -> stage:string -> ?row_id:string
-  -> ?expected_digest:string -> unit -> (Identity_json.t, string) result
+   -> ?expected_digest:string -> ?refresh_timing:bool -> unit -> (Identity_json.t, string) result
 
 (** Pure parsers shared with focused fixture tests. Line spans are one-based. *)
 val timing_records : ?max_records:int -> string -> ((int * int * (string * string) list) list * string list)

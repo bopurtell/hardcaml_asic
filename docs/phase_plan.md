@@ -28,6 +28,14 @@ to avoid renumbering historical ASIC P/S tasks or Protemu's own phases.
 
 ## Current baseline
 
+**Normal consumer update, 2026-11-12:** [Protemu installed adoption](../../hardcaml_protemu/docs/adoption-release.md)
+is accepted in bounded tooling scope: public flows/preparation, Resources UI,
+seven simulation cases, controlled core+RAM workload comparison, cancellation and
+large-report negative timing reinspection. The Magic counterfactual/profile recheck
+passes in a separate record; the original failed run remains unchanged. One
+behavior-preserving timing-repair candidate improves slow setup to −3.0998 ns but
+does not close it. Full Protemu physical/constraint/selection obligations remain open.
+
 **Tooling release update, 2026-11-12:** [stock SRAM segmented support](guides/segmented-sram.md)
 is complete in the bounded single-stock256×16/R0 through-Timing scope, including
 path-bound schema-3 checkpoint restarts and fresh named execution. Installed real
@@ -96,12 +104,12 @@ must be reported separately.
 | 1 | PT.0 — Repair and refresh SRAM feasibility evidence | Existing S.3 records | Complete in revised example-centered scope; historical probe qualifications retained |
 | 2 | PT.1 — Exact production SRAM backend | PT.0 corrected power/corner findings | Required scope complete; PT.1d optional/deferred |
 | 3 | PT.2 — Macro collateral and physical controls | PT.1 mapping/wrapper contract | Complete for stock 256×16/R0 fresh full profile; example acceptance passed |
-| 4 | PT.3 — Macro-backed Protemu acceptance | Required PT.1 scope and PT.2; consumer API migration | PT.3a/b complete; routed functional replay passes, physical acceptance blocked |
+| 4 | PT.3 — Macro-backed Protemu acceptance | Required PT.1 scope and PT.2; consumer API migration | PT.3a/b and normal tooling adoption complete; routed functionality passes, setup/full physical acceptance open |
 | 5 | PT.4 — Resource-mapping inspection API | Existing records; PT.1–PT.2 for macro fields | Complete: CLI/library preparation and independent-example acceptance |
 | 6 | PT.5 — Requested-versus-realized resource checks | PT.2, PT.4 | Complete in supported retained-evidence scope: reconciliation, physical measurements and sampled resource timing |
 | 7 | PT.6 — Workbench resource inspector | PT.4; PT.5 for realized evidence | Complete in bounded inspector scope: exact sources, qualified comparison and declared controls |
 | 8 | PT.7 — Synchronizer/reset-aware timing declarations | Endpoint reference design; independent example acceptance | Complete in agreed bounded library/example synthesis scope; physical qualification tracked separately |
-| 9 | PT.8 — Reproducible design-variant comparisons | PT.4–PT.7; independent-example workload acceptance | Complete in bounded library/example scope: declarations, verified workload/results, comparisons and example tradeoff; Protemu selection separate/pending |
+| 9 | PT.8 — Reproducible design-variant comparisons | PT.4–PT.7; independent-example workload acceptance | Library/example scope complete; Protemu fixed loader association and core+RAM functional comparison complete; package physical/performance selection open |
 
 This is the preferred execution order, not a requirement to serialize design
 work. PT.4 can begin against existing flop records; PT.7 can begin independently.
@@ -234,18 +242,21 @@ Missing collateral, ambiguous corners and invalid placement produce actionable e
 
 **Owners: Protemu for adoption/system checks; ASIC for backend defects and evidence.**
 
-**Next bounded step: PT.3c.** PT.3a adoption and PT.3b real-system vendor-functional
-regression are verified in Protemu's [adoption record](../../hardcaml_protemu/docs/pt3a-adoption.md)
-and [functional evidence](../../hardcaml_protemu/docs/pt3b-verification.md). Review
-Protemu physical placement/timing intent before implementation and final-netlist
-replay. No Questa installation is needed for the functional-model gate.
+**Remaining design step: PT.3c physical/timing acceptance.** PT.3a/b, actual routed
+functional replay and [normal installed tooling](../../hardcaml_protemu/docs/adoption-release.md)
+are verified. One behavior-preserving post-GRT repair candidate remains below the
+48 MHz setup target. Further design/physical tuning is separate from the accepted
+Workbench tooling scope; no pipeline or cycle-contract revision is implicit.
 
 First actual-loader physical attempt and independent final-netlist replay are
 recorded in [PT.3c evidence](../../hardcaml_protemu/docs/pt3c-physical-attempt.md).
 Run `0d5ed7ff0dfb4e44bcb6459bbb251fca` remains failed: slow setup −4.0586 ns/503
-violations and nine undispositioned Magic markers. Final-netlist functional replay
-passes all18 scenarios separately. Next investigate slow-corner timing repair and
-same-DEF wide-OBS diagnostic controls; do not weaken constraints or relabel the run.
+violations and nine original Magic findings. Final-netlist functional replay passes
+all18 scenarios separately. Later exact same-DEF controls prove the narrow OBS
+disposition in a separate passing profile recheck. Candidate `b591d335b32a49b8a019739ef7044e4e`
+completes segmented Timing with −3.0998 ns/444 violations. Installed reinspection
+reports that failure without changing historical unknown/failed records. The
+original run is not relabelled, and no constraints were weakened.
 
 - [x] **PT.3a — Consumer adoption.** Migrate Protemu's emitter to the current public
   API and deliberately adopt a compatible dependency/toolchain revision. Preserve
@@ -253,8 +264,8 @@ same-DEF wide-OBS diagnostic controls; do not weaken constraints or relabel the 
   Verified against recorded ASIC `b0b3384acbe22c8a30264cbdf0c19008c58bf3c5` in a
   private Protemu prefix: complete repeated bundle bytes, stable contract/resource
   identity, explicit policy, source-role separation, exact RTL linkage and existing
-  regressions pass. Exact currently emits Synthesis bundles; Hardening requires
-  reviewed Protemu physical intent. No real EDA or system macro replay is claimed.
+   regressions pass. The original PT.3a scope was emission-only. Later loader Exact
+   Hardening and normal named-flow adoption are documented separately above.
 - [x] **PT.3b — Real system regression.** Exercise the loader/core/program-store
   path: load, readback, fetch, stalls, reset/disable, image validity, rejected host
   accesses during execution, and independence from unspecified memory outputs.
@@ -266,8 +277,12 @@ same-DEF wide-OBS diagnostic controls; do not weaken constraints or relabel the 
   review and legacy Verilator regressions pass; no physical/timed claim is implied.
 - [ ] **PT.3c — Implemented-design replay.** Run the actual macro-backed system
   through the adopted flow and replay its final netlist with the macro model.
-  Record timing/check outcomes and any provisional constraint assumptions;
+   Record timing/check outcomes and any provisional constraint assumptions;
    an RTL-only fixture is not final-netlist evidence.
+   - [x] Actual routed loader and exact final-netlist functional replay retained.
+   - [x] Same-DEF Magic diagnostic controls and separate profile recheck retained.
+   - [x] Real Workbench timing-repair candidate and typed negative timing inspection.
+   - [ ] Protemu setup closure/full physical acceptance and final selection.
 
 **Exit:** the actual Protemu system works with the selected SRAM and has linked
 consumer/backend/run evidence. Final physical selection additionally requires

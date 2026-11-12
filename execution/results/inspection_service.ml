@@ -246,7 +246,9 @@ let excerpt s first last =
   done;
   if !stop then Buffer.add_string b "[excerpt truncated]\n";limit 64000 (Buffer.contents b)
 
-let run ~execution ~domain ~stage ?row_id ?expected_digest () = protect (fun () ->
+let run ~execution ~domain ~stage ?row_id ?expected_digest ?(refresh_timing=false) () = protect (fun () ->
+  if refresh_timing && (domain<>"timing" || not (List.mem stage ["timing";"signoff"])) then
+    invalid_arg "refresh-timing requires domain timing and stage timing or signoff";
   if not (List.mem domain ["timing";"clocks";"physical";"routing"]) then invalid_arg "invalid inspection domain";
   let stages=["synthesis";"floorplan";"placement";"cts";"routing";"timing";"signoff"] in
   if not (List.mem stage stages) then invalid_arg "invalid inspection stage";
@@ -303,8 +305,15 @@ let run ~execution ~domain ~stage ?row_id ?expected_digest () = protect (fun () 
   let diagnostics=ref [] and rows=ref [] and size=ref 0 and truncated=ref false in
   let diagnostic s = if List.length !diagnostics<256 then diagnostics:= !diagnostics@[limit 1500 (printable s)] else truncated:=true in
   let observe s = observed:=source_ref s::!observed;s in
-  let read root p=read_source ~root ~admit p |> observe in
-  let attempt= text (get record.raw "attempt_id") in
+   let report_bytes=ref 0 and report_count=ref 0 in
+   let admit_report bytes =
+     if bytes<0 || bytes>32*1024*1024 || !report_count>=128 || !report_bytes>256*1024*1024-bytes then
+       raise (Input_limit "timing reinspection report byte/count bound exceeded");
+     incr report_count;report_bytes:= !report_bytes+bytes in
+   let read root p=read_source ~root
+     ~admit:(if refresh_timing && String.ends_with ~suffix:".rpt" p then admit_report else admit) p |> observe in
+   let attempt= text (get record.raw "attempt_id") in
+   let lineage=ref [] in
   let analysis =
     if domain = "timing" && List.mem stage [ "timing"; "signoff" ]
     then (
@@ -313,14 +322,30 @@ let run ~execution ~domain ~stage ?row_id ?expected_digest () = protect (fun () 
           ~execution:execution_source.path
           ~execution_raw:execution_source.raw
       with
-      | Some a when get a "stage" = str stage -> Some a
+       | Some a when get a "stage" = str stage ->
+         if not refresh_timing then Some a else (
+           let original, refreshed=Timing_analysis.reinspect
+             ~execution:execution_source.path ~expected_record:record.raw in
+           let original_file=Timing_analysis.path (text (get original "execution_file")) in
+           let original_source=read (Filename.dirname execution_source.path) original_file in
+           if codec (J.parse original_source.raw)<>original then invalid_arg "original analysis changed during reinspection";
+           observed:=List.rev_append (array (get original "inventory")) !observed;
+           lineage:=["mode",str "read_only_reinspection";
+             "original_observation",source_ref original_source;
+             "original_analysis_digest",get original "source_digest";
+             "original_status",get original "status";
+             "original_timing_goal",get original "timing_goal";
+             "recomputed_analysis",refreshed];
+           Some refreshed)
       | _ -> None)
     else None
-  in
-  Option.iter (fun a ->
+   in
+   if refresh_timing && analysis=None then invalid_arg "timing reinspection requires an observation for the selected stage";
+   Option.iter (fun a ->
     Timing_analysis.validate_sources a;
-    let captured=read (Filename.dirname execution_source.path) (Timing_analysis.path (text (get a "execution_file"))) in
-    if codec (J.parse captured.raw)<>a then invalid_arg "timing analysis changed between validation and capture";
+     if not refresh_timing then (
+       let captured=read (Filename.dirname execution_source.path) (Timing_analysis.path (text (get a "execution_file"))) in
+       if codec (J.parse captured.raw)<>a then invalid_arg "timing analysis changed between validation and capture");
     observed:=List.rev_append (array (get a "inventory")) !observed) analysis;
   (match row_id,expected_digest with
    | None,Some expected -> (match analysis with
@@ -336,7 +361,7 @@ let run ~execution ~domain ~stage ?row_id ?expected_digest () = protect (fun () 
   let provenance p s first last units = obj ["file",source_ref s;"span",obj ["first_line",int first;"last_line",int last];
     "step_id",str p.id;"occurrence",int p.occurrence;
     "boundary",str p.boundary;"carry_forward",J.bool (p.boundary<>stage);
-    "evidence_scope",str scope;
+     "evidence_scope",str (if refresh_timing then "read_only_reinspection_of_retained_sources_not_original_observation" else scope);
     "config",obj ["path",str (if Filename.dirname s.path=p.dir then "config.json" else "../config.json");"sha256",str p.config_source.hash];
     "relative_paths",str "report file directory";
     "units_source",units;
@@ -502,7 +527,9 @@ let run ~execution ~domain ~stage ?row_id ?expected_digest () = protect (fun () 
       List.iter (fun (corner,dir) ->
         let unit,units=unit_for p dir corner in
         if domain="timing" then List.iter (fun file -> attempt_read p (Filename.concat dir file) (fun s ->
-          let paths,ds=timing_records ~max_records:(4096-List.length !rows) s.raw in List.iter (fun d -> diagnostic (s.path^": "^d)) ds;
+           let paths,ds=timing_records ~max_records:(if refresh_timing then min 32 (4096-List.length !rows) else 4096-List.length !rows) s.raw in
+           List.iter (fun d -> if refresh_timing && contains d "bound exceeded" then truncated:=true;
+             diagnostic (s.path^": "^d)) ds;
           if paths=[] && ds=[] then diagnostic ("missing timing path records: "^s.path);
           List.iter (fun (a,b,fields) ->
             let reported_corner=List.assoc_opt "corner" fields in
@@ -518,7 +545,7 @@ let run ~execution ~domain ~stage ?row_id ?expected_digest () = protect (fun () 
              ?value:(if conflict then None else finite (List.assoc "slack" fields))
              ~status:(if conflict then "unavailable" else List.assoc "status" fields)
              ~fields:(if conflict then ("directory_corner",Option.value directory_corner ~default:"")::("corner_conflict","quarantined")::fields else fields) ()) paths;
-          if List.exists (fun d -> contains d "bound exceeded") ds then raise (Query_stop "timing parser bound exceeded; remaining reports not parsed"))) ["max.rpt";"min.rpt"]
+           if not refresh_timing && List.exists (fun d -> contains d "bound exceeded") ds then raise (Query_stop "timing parser bound exceeded; remaining reports not parsed"))) ["max.rpt";"min.rpt"]
         else (
           attempt_read p (Filename.concat dir "clock.rpt") (fun s ->
             let conflict,conflict_fields=report_corner_conflict corner s in
@@ -626,14 +653,16 @@ let run ~execution ~domain ~stage ?row_id ?expected_digest () = protect (fun () 
       if used+bytes>budget then (truncated:=true;[]) else r::bounded (used+bytes) rest in
   let rows=bounded 0 (List.rev !rows) in
   if rows=[] then diagnostic "missing relevant retained evidence rows (not a zero measurement)";
-  let digest=sha (J.canonical (obj ["execution",source_ref execution_source;"domain",str domain;"stage",str stage;
-    "observed",J.array (List.rev !observed);"rows",J.array (List.map (fun r -> r.json) rows);
-    "diagnostics",J.array (List.map str !diagnostics)])) in
+   let digest=sha (J.canonical (obj (["execution",source_ref execution_source;"domain",str domain;"stage",str stage;
+     "observed",J.array (List.rev !observed);"rows",J.array (List.map (fun r -> r.json) rows);
+     "diagnostics",J.array (List.map str !diagnostics)] @
+     (if refresh_timing then ["reinspection",obj !lineage] else [])))) in
   let identity=["contract",str "hardcaml-asic.inspection";"schema_version",int 1;
     "execution_file",str execution_source.path;"execution_sha256",str execution_source.hash;"attempt_id",str attempt;
     "domain",str domain;"stage",str stage;"source_digest",str digest;
     "diagnostics",J.array (List.map str !diagnostics);"truncated",J.bool !truncated] @
-    (match analysis with None -> [] | Some a -> ["analysis_digest",get a "source_digest";"analysis_id",get a "analysis_id"]) in
+     (if refresh_timing then ["reinspection",obj !lineage] else []) @
+     (match analysis with None -> [] | Some a -> ["analysis_digest",get a "source_digest";"analysis_id",get a "analysis_id"]) in
   let result=match row_id,expected_digest with
    | None,_ -> obj (identity@["rows",J.array (List.map (fun r -> r.json) rows)])
   | Some id,Some expected ->

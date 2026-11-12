@@ -62,7 +62,10 @@ let describe () =
            "max_response_bytes",`Int (1024*1024);"target_kinds",strings ["bundle";"coarse_run";"execution"];
            "axes",strings ["hardware";"resource_policy";"flow_configuration";"descriptive"]];
          "preparation1",`Bool true;
-         "inspection1",`Bool true;
+          "inspection1",`Bool true;
+          "timing_reinspection1",`Assoc ["schema_version",`Int 1;"read_only",`Bool true;
+            "option",`String "--refresh-timing";"lineage",`String "reinspection";
+            "max_paths_per_report",`Int 32;"original_observation_mutated",`Bool false];
           "resource_evidence1",`Bool true;
            "resource_evidence2",`Bool true;
            "resource_inspection1",`Bool true;

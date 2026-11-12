@@ -420,8 +420,23 @@ def without_m3_obstruction(text):
     return without_wide_obstructions(text, ("Metal3",))
 
 
-def classify_wide_obstructions(findings, counterfactual, plan):
-    require(not counterfactual and findings, "counterfactual Magic DRC must be clean")
+# Witnessed by PT3c's same-DEF 9/7/2/0 experiment, not a generalized edge
+# inequality. These four *local* rectangles are the entire added coverage.
+# Any coordinate change, even one 0.005um grid step, needs new review/evidence.
+PT3C_STOCK_LEF_SHA256 = "bea0d602296a03ea2020420501767ff321f53186d7444ea0faefa4d49dac047b"
+PT3C_MACRO = "RM_IHPSG13_1P_256x16_c2_bm_bist"
+PT3C_EDGE_PROJECTIONS = {
+    ("Metal2", tuple(map(Decimal, ("-0.600", "117.805", "-0.540", "128.785")))),
+    ("Metal3", tuple(map(Decimal, ("0.000", "119.240", "181.660", "119.380")))),
+    ("Metal3", tuple(map(Decimal, ("202.980", "119.240", "236.800", "119.380")))),
+    ("Metal3", tuple(map(Decimal, ("222.240", "-0.460", "236.800", "-0.260")))),
+}
+
+
+def wide_obstruction_geometry(findings, plan, *, reviewed_projections=False):
+    require(findings, "nonempty obstruction findings required")
+    attribution = []
+    witnessed_inventory = set()
     for rule, box in findings:
         layer = obstruction_layer(rule)
         adjacent = []
@@ -442,12 +457,30 @@ def classify_wide_obstructions(findings, counterfactual, plan):
             overlap = min(box[3], top) - max(box[1], obs_bottom)
             m2_band = ((left_band or right_band) and box[2] - box[0] <= Decimal("0.6") and
                        box[1] >= obs_bottom and box[3] <= top + Decimal("10.005") and overlap > 10)
-            if layer == "Metal3" and m3_band or layer == "Metal2" and m2_band:
-                adjacent.append(macro["instance"])
+            local = (box[0] - x, box[1] - y, box[2] - x, box[3] - y)
+            witnessed = (reviewed_projections and macro.get("module") == PT3C_MACRO and halo >= Decimal("0.6") and
+                         (layer, local) in PT3C_EDGE_PROJECTIONS)
+            if layer == "Metal3" and m3_band or layer == "Metal2" and m2_band or witnessed:
+                adjacent.append({"instance": macro["instance"], "layer": layer,
+                                 "coverage": "pt3c_exact_edge_projection_v1" if witnessed else "strict_influence_band"})
         require(len(adjacent) == 1, "Magic marker is not a unique stock obstruction influence-band artifact")
+        if adjacent[0]["coverage"] == "pt3c_exact_edge_projection_v1":
+            key = (adjacent[0]["instance"], layer, box)
+            require(key not in witnessed_inventory, "duplicate reviewed edge projection")
+            witnessed_inventory.add(key)
+        attribution.append({**adjacent[0], "rule": rule, "box_um": [str(x) for x in box]})
+    return attribution
+
+
+def classify_wide_obstructions(findings, counterfactual, plan, *, controls=None, source_lef_sha256=None):
+    require(not counterfactual and findings, "counterfactual Magic DRC must be clean")
+    if controls is not None:
+        validate_obstruction_control_markers(findings, controls)
+    attribution = wide_obstruction_geometry(findings, plan, reviewed_projections=(
+        controls is not None and source_lef_sha256 == PT3C_STOCK_LEF_SHA256))
     return {"status": "dispositioned_stock_abstract", "raw_count": len(findings), "accepted_count": len(findings),
-            "unclassified_count": 0, "basis": "exact_M2_M3_f_wide_OBS_layer_controls_clean_real_GDS_required",
-            "findings": [{"rule": rule, "box_um": [str(x) for x in box]} for rule, box in findings]}
+             "unclassified_count": 0, "basis": "exact_M2_M3_f_wide_OBS_layer_controls_clean_real_GDS_required",
+             "findings": attribution}
 
 
 def classify_m3_obstruction(findings, counterfactual, plan):
@@ -455,8 +488,9 @@ def classify_m3_obstruction(findings, counterfactual, plan):
     return classify_wide_obstructions(findings, counterfactual, plan)
 
 
-def validate_obstruction_controls(findings, observed, plan):
-    classify_wide_obstructions(findings, [], plan)
+def validate_obstruction_control_markers(findings, observed):
+    """Exact multiset causality only; this does not establish physical acceptance."""
+    require(findings, "nonempty obstruction findings required")
     layers = sorted({obstruction_layer(rule) for rule, _ in findings})
     required = {"stock", *("without-" + layer for layer in layers)}
     if len(layers) > 1:
@@ -470,17 +504,32 @@ def validate_obstruction_controls(findings, observed, plan):
         require(obstruction_findings(remaining) == obstruction_findings(expected), "layer-specific obstruction control changed unrelated markers or retained target markers")
     if len(layers) > 1:
         remaining = observed["without-combined"]
-    return classify_wide_obstructions(findings, remaining, plan)
+    require(not remaining, "combined obstruction control must be clean")
 
 
-def wide_obstruction_counterfactual(flow, plan, findings, output):
+def validate_obstruction_controls(findings, observed, plan, *, source_lef_sha256=None):
+    validate_obstruction_control_markers(findings, observed)
+    remaining = observed.get("without-combined", observed["without-" + obstruction_layer(findings[0][0])])
+    return classify_wide_obstructions(findings, remaining, plan, controls=observed, source_lef_sha256=source_lef_sha256)
+
+
+def wide_obstruction_counterfactual(flow, plan, findings, output, *, evidence_only=False, tool_timeout_seconds=300):
     """Same routed DEF; stock, per-layer and combined diagnostic-only controls.
 
     This never becomes implementation/LVS/streamout collateral. Authoritative
     real-GDS DRC and exact stock polygon/power checks must pass independently.
     """
     from librelane.common import get_script_dir
-    classify_wide_obstructions(findings, [], plan)  # reject unknown/integration markers before launching
+    require(type(tool_timeout_seconds) is int and 0 < tool_timeout_seconds <= 480 and
+            (evidence_only or tool_timeout_seconds == 300), "unsupported Magic diagnostic timeout")
+    if evidence_only:
+        require(findings, "nonempty obstruction findings required")
+        obstruction_findings(findings)  # unknown rules still fail before launching
+    else:
+        config = load(flow / "resolved.json")
+        source = Path(config["MACROS"][plan["macros"][0]["module"]]["lef"][0])
+        # Candidate geometry may launch controls, but is never a disposition.
+        wide_obstruction_geometry(findings, plan, reviewed_projections=sha(source) == PT3C_STOCK_LEF_SHA256)
     output = Path(output)
     output.mkdir()
     config = load(flow / "resolved.json")
@@ -505,6 +554,11 @@ def wide_obstruction_counterfactual(flow, plan, findings, output):
         derived = folder / "diagnostic.lef"
         derived.write_text(without_wide_obstructions(source.read_text(), layers) if layers else source.read_text())
         prefix = "drc off\ncrashbackups disable\nlocking disable\nsource {" + str(drc_step / "_env.tcl") + "}\n"
+        if evidence_only:
+            copied_def = folder / "diagnostic.def"
+            copied_def.write_bytes(input_def.read_bytes())
+            require(sha(copied_def) == sha(input_def), "diagnostic DEF copy differs")
+            prefix += "set ::env(CURRENT_DEF) {" + str(copied_def) + "}\n"
         prefix += "set ::env(MACRO_LEFS) {" + str(derived) + "}\nset ::env(SCRIPTS_DIR) {" + str(get_script_dir()) + "}\n"
         prefix += "source $::env(SCRIPTS_DIR)/magic/common/read.tcl\nread_tech_lef\nread_pdk_lef\nread_macro_lef\nread_extra_lef\nread_pad_lef\nread_def\n"
         prefix += "set ::env(STEP_DIR) {" + str(folder) + "}\nset ::env(DESIGN_NAME) {" + config["DESIGN_NAME"] + "}\n"
@@ -512,13 +566,18 @@ def wide_obstruction_counterfactual(flow, plan, findings, output):
         script.write_text(prefix + body[body.index(marker):] + "\nquit -noprompt\n")
         with (folder / "magic.log").open("w") as log:
             result = subprocess.run(["magic", "-dnull", "-noconsole", "-rcfile", config["MAGICRC"], str(script)],
-                                    cwd=folder, stdout=log, stderr=subprocess.STDOUT, timeout=300,
+                                    cwd=folder, stdout=log, stderr=subprocess.STDOUT, timeout=tool_timeout_seconds,
                                     env={**os.environ, "OMP_NUM_THREADS": "1", "OPENROAD_THREADS": "1"})
         require(result.returncode == 0, "Magic obstruction diagnostic failed")
         report = folder / "reports/drc.magic.rpt"
         observed = magic_findings(report)
         controls[label] = {"removed_wide_rectangles": list(layers), "raw_count": len(observed),
-                           "diagnostic_lef_sha256": sha(derived), "script_sha256": sha(script), "report_sha256": sha(report)}
+                            "diagnostic_lef_sha256": sha(derived), "script_sha256": sha(script), "report_sha256": sha(report)}
+        if evidence_only:
+            require(sha(copied_def) == sha(input_def), "diagnostic DEF changed")
+            controls[label].update(routed_def_sha256=sha(copied_def),
+                                   findings=[{"rule": rule, "box_um": [str(x) for x in box]} for rule, box in observed])
+            write(folder / "observation.json", controls[label])
         return observed
 
     layers = sorted({obstruction_layer(rule) for rule, _ in findings})
@@ -528,9 +587,37 @@ def wide_obstruction_counterfactual(flow, plan, findings, output):
     # Independent single-worker Magic processes; at most four jobs inside the
     # route's six-CPU ceiling. Large full-DEF checks otherwise serialize minutes
     # of identical parsing/checking and can exhaust a single diagnostic timeout.
-    with ThreadPoolExecutor(max_workers=min(4, len(cases))) as pool:
-        observed = dict(zip((label for label, _ in cases), pool.map(lambda case: run_case(*case), cases)))
-    disposition = validate_obstruction_controls(findings, observed, plan)
+    workers = 1 if evidence_only else min(4, len(cases))
+    if evidence_only:
+        # Do not queue the later controls: Executor.__exit__ otherwise waits for
+        # them even after the first case has timed out and invalidated the set.
+        observed = {}
+        for label, removed in cases:
+            try:
+                observed[label] = run_case(label, removed)
+            except Exception as exc:
+                write(output / "evidence.json", {
+                    "schema_version": 1, "status": "diagnostic_inconclusive", "physical_acceptance": False,
+                    "failed_case": label, "error_type": type(exc).__name__, "error": str(exc),
+                    "controls": controls, "source_lef_sha256": sha(source), "routed_def_sha256": sha(input_def),
+                    "diagnostic_limits": {"parallel_magic_jobs": 1, "threads_per_job": 1, "tool_timeout_seconds": tool_timeout_seconds}})
+                raise
+    else:
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            observed = dict(zip((label for label, _ in cases), pool.map(lambda case: run_case(*case), cases)))
+    if evidence_only:
+        evidence = {"schema_version": 1, "status": "diagnostic_only", "physical_acceptance": False,
+                    "source_lef_sha256": sha(source), "routed_def_sha256": sha(input_def), "controls": controls,
+                    "diagnostic_limits": {"parallel_magic_jobs": 1, "threads_per_job": 1, "tool_timeout_seconds": tool_timeout_seconds}}
+        # Retain observations even when the controls disprove the hypothesis.
+        try:
+            validate_obstruction_control_markers(findings, observed)
+            evidence["exact_layer_control_relationships"] = "pass"
+        except ValueError as exc:
+            evidence.update(exact_layer_control_relationships="fail", error=str(exc))
+        write(output / "evidence.json", evidence)
+        return evidence
+    disposition = validate_obstruction_controls(findings, observed, plan, source_lef_sha256=sha(source))
     disposition.update(source_lef_sha256=sha(source), routed_def_sha256=sha(input_def), controls=controls,
                        diagnostic_limits={"parallel_magic_jobs": min(4, len(cases)), "threads_per_job": 1, "tool_timeout_seconds": 300})
     write(output / "disposition.json", disposition)
@@ -540,6 +627,166 @@ def wide_obstruction_counterfactual(flow, plan, findings, output):
 def m3_obstruction_counterfactual(flow, plan, findings, output):
     classify_m3_obstruction(findings, [], plan)
     return wide_obstruction_counterfactual(flow, plan, findings, output)
+
+
+def retained_obstruction_identity(flow, plan, directory):
+    """Bind external diagnostics to this exact failed run, not just its markers.
+
+    The checker source may be deliberately revised after diagnosis; it is not an
+    implementation input. All other frozen inputs and run-bound collateral must
+    still match. This API never promotes a failed run to provider acceptance.
+    """
+    flow, directory = Path(flow).resolve(), Path(directory).resolve()
+    project, diagnostic = flow.parents[1], directory.parent
+    run = project.parent
+    require(flow == project / "runs/asic" and directory.name == "controls" and
+            not directory.is_relative_to(run), "separate canonical diagnostic control directory required")
+    frozen = load(diagnostic / "plan.json")
+    execution = load(diagnostic / "execution.json")
+    record, manifest = load(run / "run.json"), load(project / "manifest.json")
+    require(frozen["schema_version"] == 1 and Path(frozen["run"]) == run and
+            frozen["run_id"] == record["run_id"] and frozen["build_identity"] == record["build_identity"] and
+            frozen["original_status"] == record["status"] == "failed" and frozen["physical_acceptance"] is False,
+            "retained diagnostic run identity/status mismatch")
+    require(execution["status"] == "completed" and type(execution["exit_code"]) is int and execution["exit_code"] == 0 and
+            execution["physical_acceptance"] is False, "completed diagnostic execution required")
+    require(manifest["macro_contract"]["physical_plan"] == plan and sha(project / "manifest.json") == record["manifest_sha256"],
+            "retained diagnostic macro plan/manifest mismatch")
+    budget = frozen["budget"]
+    require(budget["exclusive_eda_lane_cpus"] == 6 and budget["parallel_magic_jobs"] == 1 and
+            budget["threads_per_job"] == 1 and budget["cases"] == 4 and
+            budget["per_case_timeout_seconds"] in (300, 480) and
+            frozen["timeout_seconds"] == 4 * budget["per_case_timeout_seconds"] + 60,
+            "unsupported retained diagnostic budget")
+    command = frozen["command"]
+    require(command.count("--entrypoint") == 1 and command.count("-B") == 1, "unsupported diagnostic command")
+    entry = command.index("--entrypoint")
+    image = record["environment"]["execution_binding"]["image_identity"]["image_id"]
+    require(command[entry:entry + 5] == ["--entrypoint", "python3", image, "-I", "-B"] and
+            command[-3:] == ["inside", "--output", str(diagnostic)] and "--pull=never" in command,
+            "retained diagnostic image/output mismatch")
+    runner = Path(command[entry + 5])
+    require(runner.name == "run_magic_obstruction_diagnostic.py" and
+            runner.parent.name == "sram_physical" and runner.parent.parent.name == "test",
+            "unsupported retained diagnostic runner")
+    revised_checker = runner.parents[2] / "flow/hardcaml_asic_flow/physical_runtime.py"
+    hashes = frozen["input_sha256"]
+    require(str(revised_checker) in hashes and not revised_checker.is_relative_to(run),
+            "diagnostic checker provenance missing")
+    config = load(flow / "resolved.json")
+    step, = flow.glob("*-magic-drc")
+    routed = Path(load(step / "state_in.json")["def"])
+    names = {m["module"] for m in plan["macros"]}
+    require(len(names) == 1, "unique retained macro module required")
+    name, = names
+    require(len(config["MACROS"][name]["lef"]) == 1, "exact retained macro LEF required")
+    required = [run / "run.json", run / "results.json", run / "preflight.json", project / "manifest.json",
+                project / "physical-runtime.py", project / plan["plan_file"], project / plan["pdn_tcl"],
+                flow / "resolved.json", flow / "final/metrics.json", step / "_env.tcl", step / "state_in.json",
+                step / "reports/drc.magic.rpt", routed, Path(config["MAGICRC"]),
+                flow / "final/gds" / (manifest["top_module"] + ".gds"),
+                flow / "final/nl" / (manifest["top_module"] + ".nl.v")]
+    required += list(flow.glob("*-openroad-generatepdn/macro-power-geometry.json"))
+    require(len(list(flow.glob("*-openroad-generatepdn/macro-power-geometry.json"))) == 1,
+            "unique retained power geometry required")
+    required += [Path(p) for p in [*config["MACROS"][name]["lef"], *config["TECH_LEFS"].values(), *config["CELL_LEFS"]]]
+    for ref in record["environment"]["references"]:
+        require(hashes.get(ref["path"]) == ref["sha256"] and sha(ref["path"]) == ref["sha256"],
+                "retained diagnostic source reference mismatch")
+        required.append(Path(ref["path"]))
+    require(revised_checker not in required, "diagnostic checker cannot exempt a physical input")
+    require(all(str(p) in hashes for p in required), "retained diagnostic frozen input missing")
+    require(all(sha(p) == digest for p, digest in hashes.items() if Path(p) != revised_checker),
+            "retained diagnostic frozen input changed")
+    evidence, result = load(directory / "evidence.json"), load(diagnostic / "result.json")
+    require(result == dict(evidence, original_run_status=record["status"], run_id=record["run_id"],
+                           build_identity=record["build_identity"], raw_report_sha256=sha(step / "reports/drc.magic.rpt")),
+            "retained diagnostic result/run/raw report mismatch")
+    paths = [diagnostic / name for name in ("plan.json", "execution.json", "result.json")]
+    return {str(p): sha(p) for p in paths}
+
+
+def retained_obstruction_controls(flow, plan, findings, directory):
+    """Re-read raw diagnostic controls; derived LEFs/DEFs must be exact copies.
+
+    This is only the Magic portion of checking. Real-GDS, contacts, electrical
+    metrics and executed LVS are independently required by check().
+    """
+    flow, directory = Path(flow).resolve(), Path(directory).resolve()
+    identity_artifacts = retained_obstruction_identity(flow, plan, directory)
+    from librelane.common import get_script_dir
+    scripts = Path(get_script_dir())
+    body = (scripts / "magic/drc.tcl").read_text()
+    marker = "set report_dir $::env(STEP_DIR)/reports"
+    require(body.count(marker) == 1, "unsupported retained Magic diagnostic script")
+    evidence = load(directory / "evidence.json")
+    require(evidence["status"] == "diagnostic_only" and evidence["physical_acceptance"] is False and
+            evidence["exact_layer_control_relationships"] == "pass", "incomplete diagnostic control evidence")
+    config = load(flow / "resolved.json")
+    source = Path(config["MACROS"][plan["macros"][0]["module"]]["lef"][0])
+    require(config.get("MAGIC_DRC_USE_GDS") is False and config.get("MAGIC_DRC_MAGLEFS") is None,
+            "unsupported retained Magic reader scope")
+    step, = flow.glob("*-magic-drc")
+    routed = Path(load(step / "state_in.json")["def"])
+    require(evidence["source_lef_sha256"] == sha(source) and evidence["routed_def_sha256"] == sha(routed),
+            "retained controls differ from physical inputs")
+    cases = {"stock": [], "without-Metal2": ["Metal2"], "without-Metal3": ["Metal3"],
+             "without-combined": ["Metal2", "Metal3"]}
+    require(set(evidence["controls"]) == set(cases), "four retained layer controls required")
+    observed, artifacts = {}, {**identity_artifacts, str(directory / "evidence.json"): sha(directory / "evidence.json")}
+    for label, layers in cases.items():
+        folder = directory / label
+        record = evidence["controls"][label]
+        require(load(folder / "observation.json") == record, "retained per-case observation mismatch")
+        lef, copied, script, report = (folder / p for p in ("diagnostic.lef", "diagnostic.def", "counterfactual.tcl", "reports/drc.magic.rpt"))
+        expected = without_wide_obstructions(source.read_text(), layers) if layers else source.read_text()
+        require(lef.read_text() == expected and record["removed_wide_rectangles"] == layers,
+                "retained diagnostic changed pins/narrow OBS/power or wrong wide rectangle")
+        require(sha(copied) == sha(routed) == record["routed_def_sha256"], "retained diagnostic DEF changed")
+        for path, key in ((lef, "diagnostic_lef_sha256"), (script, "script_sha256"), (report, "report_sha256")):
+            require(sha(path) == record[key], "retained diagnostic artifact changed: " + str(path))
+        expected_script = "drc off\ncrashbackups disable\nlocking disable\nsource {" + str(step / "_env.tcl") + "}\n"
+        expected_script += "set ::env(CURRENT_DEF) {" + str(copied) + "}\n"
+        expected_script += "set ::env(MACRO_LEFS) {" + str(lef) + "}\nset ::env(SCRIPTS_DIR) {" + str(scripts) + "}\n"
+        expected_script += "source $::env(SCRIPTS_DIR)/magic/common/read.tcl\nread_tech_lef\nread_pdk_lef\nread_macro_lef\nread_extra_lef\nread_pad_lef\nread_def\n"
+        expected_script += "set ::env(STEP_DIR) {" + str(folder) + "}\nset ::env(DESIGN_NAME) {" + config["DESIGN_NAME"] + "}\n"
+        expected_script += body[body.index(marker):] + "\nquit -noprompt\n"
+        require(script.read_text() == expected_script, "retained control reader/deck script differs from pinned machinery")
+        observed[label] = magic_findings(report)
+        require(len(observed[label]) == record["raw_count"], "retained diagnostic count mismatch")
+        for path in (lef, copied, script, report, folder / "magic.log", folder / "observation.json"):
+            artifacts[str(path)] = sha(path)
+    result = validate_obstruction_controls(findings, observed, plan, source_lef_sha256=sha(source))
+    require(all(sha(p) == digest for p, digest in artifacts.items()), "retained diagnostic changed during validation")
+    result.update(source_lef_sha256=sha(source), routed_def_sha256=sha(routed), control_artifacts=artifacts)
+    return result
+
+
+def obstruction_contact_attribution(findings, plan, geometry, layout, db):
+    """Geometric attribution only. XY coincidence with Metal4 is not a short."""
+    matched = wide_obstruction_geometry(findings, plan, reviewed_projections=True)
+    units = Decimal(geometry["dbu_per_um"])
+    via_layer = layout.find_layer(49, 0)  # pinned layers_def.drc: Via3 drawing
+    vias = db.Region() if via_layer is None else db.Region(layout.top_cell().begin_shapes_rec(via_layer))
+    result = []
+    for finding, match in zip(findings, matched):
+        _, box = finding
+        macro = next(m for m in geometry["macros"] if m["instance"] == match["instance"])
+        contacts = []
+        for contact in macro["contacts"]:
+            for key in ("neck_rect_dbu", "landing_rect_dbu"):
+                rect = [Decimal(v) / units for v in contact[key]]
+                overlap = (max(box[0], rect[0]), max(box[1], rect[1]), min(box[2], rect[2]), min(box[3], rect[3]))
+                if overlap[0] <= overlap[2] and overlap[1] <= overlap[3]:
+                    coordinates = [v / Decimal(str(layout.dbu)) for v in overlap]
+                    require(all(v == int(v) for v in coordinates), "contact intersection not on GDS DBU")
+                    region = db.Region(db.Box(*map(int, coordinates)))
+                    contacts.append({"pin": contact["pin"], "net": contact["net"], "contact_layer": "Metal4",
+                                     "region": key, "intersection_um": [str(v) for v in overlap],
+                                     "relation": "area_overlap" if overlap[0] < overlap[2] and overlap[1] < overlap[3] else "boundary_touch",
+                                     "via3_area_present": not (vias & region).is_empty()})
+        result.append({**match, "contacts": contacts, "interpretation": "XY_only_not_electrical_connectivity"})
+    return result
 
 
 def disposition_magic(flow, plan, geometry_path, expected_count, *, baseline_dir=None):
@@ -585,10 +832,18 @@ def disposition_magic(flow, plan, geometry_path, expected_count, *, baseline_dir
     return disposition
 
 
-def check(project, pdk_root):
+def check(project, pdk_root, *, evidence_output=None, magic_control_dir=None):
     manifest, plan = validate_plan(project)
     project, pdk_root = Path(project), Path(pdk_root)
     flow = project / "runs/asic"
+    output = flow if evidence_output is None else Path(evidence_output)
+    if evidence_output is not None:
+        require(not output.resolve().is_relative_to(project.resolve()), "independent evidence output must be outside original project")
+        require(output.is_dir() and not (output / "physical-checks.json").exists(), "fresh independent evidence output required")
+    require(magic_control_dir is None or evidence_output is not None, "retained controls require separate evidence record")
+    if magic_control_dir is not None:
+        require(not output.resolve().is_relative_to(project.resolve().parent),
+                "retained controls require output outside original run")
     top = manifest["top_module"]
     gds = flow / "final/gds" / (top + ".gds")
     gds_digest = sha(gds)
@@ -644,12 +899,20 @@ def check(project, pdk_root):
     # Keep raw Magic counts. No unreviewed category or bounding-box-only waiver:
     # a new supply bridge can introduce a real short inside the macro footprint.
     magic_count = finite_count(metrics, "magic__drc_error__count")
-    magic_disposition = disposition_magic(flow, plan, geometry, magic_count)
+    if magic_control_dir is None:
+        magic_disposition = disposition_magic(flow, plan, geometry, magic_count)
+    else:
+        raw_magic, = flow.glob("*-magic-drc/reports/drc.magic.rpt")
+        findings = magic_findings(raw_magic)
+        require(len(findings) == magic_count, "Magic metric/raw report disagreement")
+        magic_disposition = retained_obstruction_controls(flow, plan, findings, magic_control_dir)
+        magic_disposition["raw_report_sha256"] = sha(raw_magic)
+        magic_disposition["contact_attribution"] = obstruction_contact_attribution(findings, plan, load(geometry), layout, db)
     lvs = list(flow.glob("*-netgen-lvs/lvs_script.lvs"))
     require(len(lvs) == 1, "missing executed LVS script")
     cdl, powered, derived, derived_powered = validate_lvs_reader(lvs[0].parent, manifest, pdk_root)
     lvs_log = lvs[0].parent / "netgen-lvs.log"
-    retained_log = flow / "physical-checker-artifacts/drc-klayout.log"
+    retained_log = output / "physical-checker-artifacts/drc-klayout.log"
     retained_log.parent.mkdir(exist_ok=True)
     retained_log.write_bytes(deck_log.read_bytes())
     require(sha(gds) == gds_digest and sha(checked_gds) == gds_digest, "real GDS changed during physical evidence validation")
@@ -661,7 +924,7 @@ def check(project, pdk_root):
                 "power_geometry_sha256": sha(geometry), "final_power_geometry": "retained_in_real_gds",
                 "magic_disposition": magic_disposition, "internal_device_lvs": "not_verified",
                 "resource_limits": {"workers": 6, "sta_workers": 1}}
-    raw = [geometry, report, json_report, captured_log, retained_log, step / "state_in.json", flow / "resolved.json", lvs[0], lvs_log,
+    raw = [geometry, report, json_report, captured_log, step / "state_in.json", flow / "resolved.json", lvs[0], lvs_log,
            lvs[0].parent / "lvs-reader.json", derived, derived_powered, powered,
            flow / "final/nl" / (top + ".nl.v"), flow / "final/lef" / (top + ".lef")]
     require(all(p.is_file() for p in raw), "required physical raw artifact missing")
@@ -675,7 +938,12 @@ def check(project, pdk_root):
     extraction = list(flow.glob("*-magic-spiceextraction/feedback.txt"))
     require(len(extraction) == 1, "raw Magic extraction feedback required")
     evidence["artifacts"] = {str(p.relative_to(flow)): sha(p) for p in raw if p.is_file()}
-    write(flow / "physical-checks.json", evidence)
+    if evidence_output is None:
+        evidence["artifacts"][str(retained_log.relative_to(flow))] = sha(retained_log)
+    else:
+        evidence.update(record_kind="independent_physical_recheck_not_provider_acceptance",
+                        provider_acceptance=False, output_artifacts={str(retained_log.relative_to(output)): sha(retained_log)})
+    write(output / "physical-checks.json", evidence)
     return evidence
 
 

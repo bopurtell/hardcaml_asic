@@ -20,7 +20,7 @@ let grammar command query = match command with
   | "resources-inspect" -> [], [], "run-dir"
   | "timing-intent-inspect" -> ["kind"], [], "target"
   | "resource-inspect" -> ["kind";"query";"resource-id";"section";"expected-digest";"artifact-id";"offset";"limit"], [], "target"
-  | "inspect" -> ["domain";"stage";"row-id";"expected-digest"], [], "execution"
+   | "inspect" -> ["domain";"stage";"row-id";"expected-digest"], ["refresh-timing"], "execution"
   | "archive" -> ["output"], ["list";"force"], "run-dir"
   | "stages" -> ["support-tools";"pdk-root";"python";"workspace";"checkpoint-store";"endpoint";"plan";"methodology-plan";"expected-plan-identity";"checkpoint";"timeout";"observation-store"], ["no-observation"], "bundle"
   | "finalize" -> ["operation-store";"support-tools";"precheck-python";"testbench";"replay-trace";"testbench-top"], ["accept"], "execution"
@@ -54,7 +54,7 @@ let help command query =
     if pos<>"" then Printf.printf "required argument: %s\n" (if command="report" then "TARGET" else pos);
     if command="report" then print_endline "TARGET: coarse run, stage checkpoint, stage workspace, or explicit execution JSON";
      if command="compare" then print_endline "Read-only pair comparison: explicit --left-kind/--left and --right-kind/--right, required --axis hardware|resource_policy|flow_configuration|descriptive. Optional --left-workload PATH and --right-workload PATH bind checked workload results to verified bundle/hardware identities. Whole JSON <=1MiB; no pagination. Exit0 is readability, not acceptance or a winner.";
-     if command="inspect" then print_endline "Read-only retained evidence: --domain timing|clocks|physical|routing --stage synthesis|floorplan|placement|cts|routing|timing|signoff. --expected-digest alone pins a timing_analysis1 source; with --row-id it pins the index for detail. JSON contract: hardcaml-asic.inspection schema 1.";
+      if command="inspect" then print_endline "Read-only retained evidence: --domain timing|clocks|physical|routing --stage synthesis|floorplan|placement|cts|routing|timing|signoff. --refresh-timing recomputes retained timing/signoff sources with explicit original/recomputed lineage, without modifying the original observation; timing paths are sampled (32/report). --expected-digest alone pins the selected analysis digest; with --row-id it pins the index for detail. JSON contract: hardcaml-asic.inspection schema 1.";
      if command="preparation-inspect" then print_endline "Read-only retained Elaborate & Resolve Resources preparation. --current-identity compares an explicit preparation identity; absent comparison does not reconstruct current sources. JSON contract: hardcaml-asic.preparation-inspection schema 1.";
      if command="timing-intent-inspect" then print_endline "Read-only timing evidence. --kind execution requires an exact named execution JSON; --kind coarse_run selects ordinary linked synthesis evidence; default standalone preserves schema-1/2 audit inspection. Named evidence is path-bound; named archives/relocation unsupported. Exhaustive path-effect coverage remains unavailable.";
      if command="workload-inspect" then print_endline "Read-only public Workload_result.inspect of an explicit result.json. JSON <=1MiB. Exit0 means readable, including functional failure or partial evidence; exit2 means invalid evidence or usage.";
