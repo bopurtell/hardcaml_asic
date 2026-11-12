@@ -7,6 +7,8 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import types
+from unittest.mock import patch
 
 consumer, bridge = map(lambda p: Path(p).resolve(), sys.argv[1:])
 
@@ -450,13 +452,21 @@ def unused_pinned_cmos5l_invocation(gds):
     execute = next(n for n in ast.parse(bridge.read_text()).body if isinstance(n, ast.FunctionDef) and n.name == "execute")
     exec(compile(ast.Module(body=[execute], type_ignores=[]), str(bridge), "exec"), ns)
     candidate = root / "must-not-publish"
-    try:
-        ns["execute"]({"project":str(bundle), "pdk_root":str(pdk), "candidate":str(candidate),
-                       "boundary":"synthesis", "operation":"execute_segment", "checkpoint":None})
-    except ValueError as e:
-        assert "segmented checkpoints are unsupported" in str(e)
-    else:
-        raise AssertionError("macro checkpoint capability must not be minted")
+    executor_budgets = []
+    def set_tpe(executor):
+        executor_budgets.append(executor._max_workers)
+        executor.shutdown()
+    # Match the bridge's executor API without importing the real EDA package.
+    with patch.dict(sys.modules, {"librelane": types.ModuleType("librelane"),
+                                 "librelane.common": types.SimpleNamespace(set_tpe=set_tpe)}):
+        try:
+            ns["execute"]({"project":str(bundle), "pdk_root":str(pdk), "candidate":str(candidate),
+                           "boundary":"synthesis", "operation":"execute_segment", "checkpoint":None})
+        except ValueError as e:
+            assert "segmented checkpoints are unsupported" in str(e)
+        else:
+            raise AssertionError("macro checkpoint capability must not be minted")
+    assert executor_budgets == [6]
     assert not candidate.exists()
     liberty.write_text("synthetic macro collateral")
     assert ns["closure"]({}, bundle, pdk) == before

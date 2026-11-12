@@ -9,11 +9,15 @@
  (action (run cc -shared -fPIC -o %{targets} %{dep:fence.c} -ldl)))
 
 (rule
- (alias runtest)
+ (alias historical_review)
  (deps review.py ../workload_comparison/check.py ../check_resource_evidence.py fence.so)
  (action (run python3 -B %{dep:review.py}
    --probe %{exe:probe.exe} --variant %{exe:../workload_result/consumer.exe}
    --fence %{dep:fence.so})))
+
+(alias
+ (name runtest)
+ (deps (alias corrected_review)))
 
 (rule
  (alias corrected_review)

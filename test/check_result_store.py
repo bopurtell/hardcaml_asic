@@ -15,7 +15,7 @@ sys.dont_write_bytecode = True
 TIME = 1760000000.123456
 IDS = [f"{n:08x}" + "12344abc8def123456789abc" for n in range(32)]
 
-def verify(consumer):
+def verify(consumer, workers=16):
     from hardcaml_asic_flow import result_store as old, phase4
     def run(**request):
         completed = subprocess.run([str(consumer)], input=json.dumps(request) + "\n",
@@ -89,8 +89,8 @@ def verify(consumer):
         loop = root / "loop"
         loop.symlink_to(loop)
         assert "error" in allocation(loop)
-        # 16 independent processes contend over the same deterministic name list.
-        with ThreadPoolExecutor(max_workers=16) as pool:
+        # Keep all 16 allocations; smaller pools still exercise concurrent contention.
+        with ThreadPoolExecutor(max_workers=workers) as pool:
             allocations = list(pool.map(lambda _: allocation(root / "parallel", attempts=32), range(16)))
         directories = [a["directory"] for a in allocations]
         assert len(set(directories)) == 16
@@ -197,17 +197,18 @@ def verify(consumer):
         assert len(retained) == 1 and not list(retained[0].iterdir())
         bad_bundle = run(op="begin", path=str(root / "invalid-bundle"), bundle="bad\u0000bundle", time=TIME, ids=IDS)
         assert "error" in bad_bundle and not (root / "invalid-bundle").exists()
-    print("result-store: allocation/collision/concurrency/failure/atomic visibility and Python record parity passed")
+    print(f"result-store: allocation/collision/concurrency ({workers} workers, 16 allocations)/failure/atomic visibility and Python record parity passed")
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--consumer", type=Path)
     parser.add_argument("--installed", action="store_true")
+    parser.add_argument("--workers", type=int, choices=range(2, 17), default=16)
     args = parser.parse_args()
     repo = Path(__file__).resolve().parents[1]
     if not args.installed:
         sys.path.insert(0, str(repo / "flow"))
-        verify(args.consumer.resolve())
+        verify(args.consumer.resolve(), args.workers)
         return
     with tempfile.TemporaryDirectory(prefix="installed-result-store-", dir="/tmp/opencode") as temporary:
         root = Path(temporary)
@@ -231,7 +232,7 @@ def main():
                     raise AssertionError("checkout read in installed storage test")
         sys.addaudithook(audit)
         try:
-            verify(consumer / "_build/default/result_store_consumer.exe")
+            verify(consumer / "_build/default/result_store_consumer.exe", args.workers)
         finally:
             auditing = False
             os.chdir(previous_cwd)

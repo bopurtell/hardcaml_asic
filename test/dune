@@ -666,7 +666,8 @@
  (alias ocaml-result-store)
  (deps reference_harness.py check_result_store.py (source_tree ../flow))
  (action (run python3 -B %{dep:check_result_store.py}
-              --consumer %{exe:result_store_consumer.exe})))
+              --consumer %{exe:result_store_consumer.exe}
+              --workers %{env:HARDCAML_ASIC_TEST_WORKERS=16})))
 
 (alias
  (name runtest)

@@ -144,10 +144,10 @@ class DefaultJournalTest(unittest.TestCase):
                 self.assertTrue(any(call[:2] == ["rm", "-f"] for call in calls))
                 for call in calls:
                     if call[0] == "run":
-                        self.assertIn("--cpus=20", call)
-                        self.assertIn("_OPENLANE_MAX_CORES=20", call)
-                        self.assertIn("OPENROAD_THREADS=20", call)
-                        self.assertIn("OMP_NUM_THREADS=20", call)
+                        self.assertIn("--cpus=6", call)
+                        self.assertIn("_OPENLANE_MAX_CORES=6", call)
+                        self.assertIn("OPENROAD_THREADS=6", call)
+                        self.assertIn("OMP_NUM_THREADS=6", call)
 
     def test_sigint_sigterm_forwarded_from_public_pid(self):
         for signum in (signal.SIGINT, signal.SIGTERM):
