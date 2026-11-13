@@ -5,6 +5,7 @@ This is not an automatic implementation queue. Reactivate work through the
 
 | Item | Reactivation condition |
 | --- | --- |
+| [Progress inside long-running ASIC operations](operation-progress.md) | Installer stages/heartbeat/live output delivered; finer-grained diagnostics within silent test/tool operations remain deferred |
 | ASIC P7.1–P7.6 historical consumer consolidation | The owner chooses to migrate that consumer and its current code can be audited; the absent scaf worktree is not a prerequisite for the new example |
 | [TT GitHub submission inputs (`custom_gds`, `pdk`, `tools-ref`)](tt-github-submission-inputs.md) | A GDS built here is published to a TT GitHub repository for official precheck |
 | [Nix development environment proposal](nix_reproducibility_repo_handoff.md) | Explicit environment-reproducibility project; independent of the already-used Nix postcheck invocation |

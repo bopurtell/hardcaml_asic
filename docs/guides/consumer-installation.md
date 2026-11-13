@@ -14,6 +14,33 @@ sub-libraries only if it needs them. The generated
 [`hardcaml_asic.opam`](../../hardcaml_asic.opam) lists the OCaml dependencies.
 No registry publication is needed.
 
+## Source-checkout installer with progress
+
+With the desired compiler switch and prerequisites already selected, a consumer
+can invoke the source checkout's installer:
+
+```sh
+python3 -B scripts/install.py --prefix /absolute/private/prefix
+# Add --verbose for full Dune command output; --dune selects a specific executable.
+```
+
+The script owns three numbered stages: build, test, install. It prints live Dune
+output, elapsed times, and a heartbeat every 15 seconds, all on stderr. Builds
+use four jobs; tests use `--no-buffer -j1`. The result-store check's internal
+worker pool defaults to four, or preserves `HARDCAML_ASIC_TEST_WORKERS` when set
+by the caller. That variable does not parallelize the whole suite. SIGINT and
+SIGTERM stop the active Dune process group, including workers, before exit.
+
+This does not select source revisions, install opam prerequisites, provision EDA
+tools, activate a consumer environment, or publish a consumer receipt. Those
+remain caller-owned. Electrum tees these diagnostics into its generation log and
+installs Workbench separately. Its pinned revisions without this script continue
+to use its local fallback; new upstream behavior requires a capture containing
+the script. Direct users can redirect stderr to retain a log.
+
+The lightweight installer contract checks run with
+`dune build -j4 --no-buffer @test/install-script`.
+
 **Breaking changes to know about:**
 
 - The public API rename has no aliases: `Build` → `Elaborated_project`,

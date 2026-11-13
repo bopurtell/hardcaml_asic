@@ -714,3 +714,13 @@
 (alias
  (name runtest)
  (deps (alias ocaml-observation-writer)))
+
+(rule
+ (alias install-script)
+ (deps check_install.py install_fake_dune.py ../scripts/install.py)
+ (action (run python3 -B %{dep:check_install.py}
+              --installer %{dep:../scripts/install.py})))
+
+(alias
+ (name runtest)
+ (deps (alias install-script)))
