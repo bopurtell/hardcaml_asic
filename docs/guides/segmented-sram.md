@@ -121,7 +121,7 @@ paths; it runs real EDA and needs an allocated serial six-worker lane.
 
 ## Workbench proof and limits
 
-The [Workbench release evidence](../../../hardcaml_workbench/docs/sram_segmented_release.md)
+The [Workbench release evidence](../../../silver/docs/sram_segmented_release.md)
 records an actual production TUI launch, six-stage observation, same-store restart,
 cache revalidation and submission deduplication using this provider generation.
 

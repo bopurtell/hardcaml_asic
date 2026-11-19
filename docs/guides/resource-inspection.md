@@ -73,6 +73,6 @@ The actual augmented SRAM capture produces one `program` row, 76 authorized sour
 raw STA reports and stays timing-unavailable. Electrical compliance is not assessed;
 geometry, sampled coverage and area-scope qualifications remain those of PT.5b.
 
-Workbench consumes this interface through its [Resources inspector](../../../hardcaml_workbench/docs/resource_inspector.md).
+Workbench consumes this interface through its [Resources inspector](../../../silver/docs/resource_inspector.md).
 Real native acceptance and exact provider identities are recorded in the
-[integration evidence](../../../hardcaml_workbench/docs/resource_inspector_acceptance.md).
+[integration evidence](../../../silver/docs/resource_inspector_acceptance.md).

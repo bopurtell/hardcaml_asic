@@ -63,8 +63,8 @@ archives. Workbench owns a rebuildable index, bounded caches, saved selections a
 layouts; its daemon owns its own process handles. Readers of one run are
 independent: selection, tile lifetime and client detach never control a flow.
 
-The active [Workbench architecture](../../hardcaml_workbench/docs/hardcaml_workbench_architecture.md)
-and [construction plan](../../hardcaml_workbench/docs/construction_phase_plan.md)
+The active [Workbench architecture](../../silver/docs/hardcaml_workbench_architecture.md)
+and [construction plan](../../silver/docs/construction_phase_plan.md)
 own feature, window and tile behavior. These workspace links are for navigation,
 not runtime path requirements.
 

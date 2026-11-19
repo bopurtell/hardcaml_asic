@@ -10,7 +10,7 @@ owns RAM semantics. Detailed designs and evidence belong in `development/`,
 `sram/`, and `evidence/`, linked from the relevant item here.
 
 For replacement-session orientation across ASIC, Workbench and the example, see
-the [cross-repository checkpoint](../../hardcaml_workbench/docs/session_checkpoint.md).
+the [cross-repository checkpoint](../../silver/docs/session_checkpoint.md).
 This file remains the only active ASIC queue; the checkpoint distinguishes bounded
 PT.0–PT.8 completion, separate PT.3 adoption and paused deployment acceptance.
 
@@ -63,7 +63,7 @@ is separate from the open Protemu physical/timing findings in PT.3c.
   in historical records is superseded by that update.
 - Workbench already has flow integration, synthesis cell tables, timing and
   physical inspection. The new work is logical-resource mapping and its connection
-  to implementation evidence; see its [current overview](../../hardcaml_workbench/README.md).
+  to implementation evidence; see its [current overview](../../silver/README.md).
 
 Current implementation evidence is in the [physical closeout](development/sram-example-physical.md#implementation--execution-record)
 and [earlier synthesis record](development/sram-example-integration.md#evidence).
@@ -373,7 +373,7 @@ facts. A declaration alone cannot establish that a run retained its SRAM.
 
 **Owner: Workbench; ASIC owns and tests the public data contract.**
 
-Implementation authorized 2026-10-28. [Cross-repository integration contract](../../hardcaml_workbench/docs/resource_inspector_plan.md)
+Implementation authorized 2026-10-28. [Cross-repository integration contract](../../silver/docs/resource_inspector_plan.md)
 defines typed bundle/coarse/execution/finalization targets, bounded index/detail/source
 queries, explicit historical import and Resources workspace acceptance. Existing
 PT.5 raw inspection remains compatible; UI does not duplicate selection/reconciliation.
@@ -394,8 +394,8 @@ Controls reuse project-advertised flow/profile/assignments; unsupported memory-p
 knobs and automatic variant sweeps are not introduced. Actual augmented SRAM UI
 acceptance verifies `program`, stock macro, matched synthesis/final observations,
 physical area and sampled paths; empty FIFO and unavailable historical inventory
-are distinct. [Operating guide](../../hardcaml_workbench/docs/resource_inspector.md),
-[acceptance](../../hardcaml_workbench/docs/resource_inspector_acceptance.md).
+are distinct. [Operating guide](../../silver/docs/resource_inspector.md),
+[acceptance](../../silver/docs/resource_inspector_acceptance.md).
 Both full suites and independent correction review pass. Named-checkpoint realization,
 unlinked preparation history and PT.5b physical/timing limits remain explicit; no EDA
 or new named macro execution is claimed. Application provider upgrade was separately
