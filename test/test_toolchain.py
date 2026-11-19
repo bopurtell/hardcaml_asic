@@ -114,6 +114,9 @@ def main(argv):
             metadata.mkdir()
             (metadata / "METADATA").write_text(f"Name: {name}\nVersion: {version}\n")
         (self.flow_site / "tkinter.py").write_text("class Tcl:\n    def eval(self, expression): return '42'\n")
+        # Select the scratch modules even if the host ships stdlib tkinter.
+        (self.flow_site / "fixture_tcl.pth").write_text(
+            f"import sys; sys.path.insert(0, {str(self.flow_site)!r})\n")
         (self.flow_site / "_tkinter.py").write_text("# synthetic system extension\n")
         self.write_env()
 

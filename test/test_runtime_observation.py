@@ -142,6 +142,8 @@ class ObservationTest(unittest.TestCase):
             dist.mkdir()
             (dist / "METADATA").write_text("Name: librelane\nVersion: 3.1.0.dev3\nRequires-Python: >=3.10\n")
             (site / "tkinter.py").write_text("raise ImportError('broken Tcl fixture')\n")
+            (site / "fixture_tcl.pth").write_text(
+                f"import sys; sys.path.insert(0, {str(site)!r})\n")
             alias = Path(temporary) / "alias"
             alias.symlink_to(venv, target_is_directory=True)
             observed = ro.observe_host(alias / "bin/python")

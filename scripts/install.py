@@ -148,7 +148,9 @@ def main():
         return 1
     finally:
         for sig, handler in previous.items():
-            signal.signal(sig, handler)
+            # A second Ctrl-C during interpreter shutdown must not replace
+            # the cancellation status after the process tree was cleaned up.
+            signal.signal(sig, signal.SIG_IGN if cancellation.signum is not None else handler)
 
 
 if __name__ == '__main__':
