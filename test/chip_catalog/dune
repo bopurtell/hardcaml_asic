@@ -1,0 +1,3 @@
+(rule
+ (alias runtest)
+ (action (run python3 -B %{dep:check.py} %{exe:../../bin/chip_targets.exe})))

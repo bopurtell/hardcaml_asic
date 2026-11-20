@@ -80,6 +80,7 @@ cat > dune-project <<'EOF'
 EOF
 cat > dune <<'EOF'
 (executable (name main) (public_name hardcaml-asic-flow) (package hardcaml_asic))
+(install (section bin) (files (main.exe as hardcaml-asic-targets)))
 (install (section lib) (files version.txt))
 EOF
 cat > hardcaml_asic.opam <<'EOF'
@@ -97,6 +98,8 @@ for version in first second; do
   echo "let () = print_endline \"$version\"" > main.ml
   ./install.sh
   [[ $(hardcaml_asic) == "$version" && $(hardcaml-asic-flow) == "$version" ]]
+  [[ $("$HOME/.local/bin/hardcaml-asic-targets") == "$version" ]]
+  [[ $(realpath "$HOME/.local/bin/hardcaml-asic-targets") == "$prefix/bin/hardcaml-asic-targets" ]]
   [[ $(cat "$prefix/lib/hardcaml_asic/version.txt") == "$version" ]]
   [[ $(realpath "$HOME/.local/bin/hardcaml_asic") == "$prefix/bin/hardcaml-asic-flow" ]]
 done

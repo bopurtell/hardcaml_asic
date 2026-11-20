@@ -8,6 +8,8 @@ One opam package (`hardcaml_asic`, version 0.1.0) installs:
 
 - the **hardware library** `hardcaml_asic`: project declaration, registered
   resources (memory), target/constraint resolution and bundle emission;
+- **[`hardcaml-asic-targets`](docs/guides/chip-targets.md)**: list and invoke
+  independent chip entry points in a Dune project;
 - the **flow domain** `hardcaml_asic.flow_domain`: stages, operations, named
   methodologies, typed parameter profiles and the checked LibreLane mapping;
 - the **execution library** `hardcaml_asic.execution`: preflight, run, stage

@@ -5,7 +5,7 @@ set -euo pipefail
 usage() {
   cat <<'EOF'
 Usage: ./install.sh [--prefix DIR] [--print-prefix]
-Default: install the package with opam in the selected switch and link both CLI names in ~/.local/bin.
+Default: install the package with opam in the selected switch and link its CLI commands in ~/.local/bin.
 --prefix DIR    Install only in DIR (no global links).
 --print-prefix  Print the selected absolute prefix without building or installing.
 EOF
@@ -44,7 +44,9 @@ link() { [[ -L $2 ]] || ln -sT -- "$1" "$2"; }
 names=(hardcaml_asic hardcaml-asic-flow)
 if "$global"; then
   flow=$(opam var bin)/hardcaml-asic-flow
+  targets=${flow%/*}/hardcaml-asic-targets
   for name in "${names[@]}"; do check_link "$flow" "$HOME/.local/bin/$name"; done
+  check_link "$targets" "$HOME/.local/bin/hardcaml-asic-targets"
   opam install -j4 --deps-only "$repo/hardcaml_asic.opam"
   # Regenerate the .install manifest even when the package version is
   # unchanged. opam --assume-built installs it (and records file ownership)
@@ -53,8 +55,10 @@ if "$global"; then
     --promote-install-files=true @install
   opam install -j4 --assume-built "$repo/hardcaml_asic.opam"
   [[ -x $flow ]] || fail "opam did not install $flow"
+  [[ -x $targets ]] || fail "opam did not install $targets"
   mkdir -p -- "$HOME/.local/bin"
   for name in "${names[@]}"; do link "$flow" "$HOME/.local/bin/$name"; done
+  link "$targets" "$HOME/.local/bin/hardcaml-asic-targets"
   printf 'To select its commands: export PATH="$HOME/.local/bin:$PATH"\n'
 else
   [[ $prefix != / && $prefix != "$(realpath -- "$switch_prefix")" ]] ||

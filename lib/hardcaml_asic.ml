@@ -26,7 +26,10 @@ end
 
 (** {1 Consumer entry points} *)
 
-module Project = Project
+(** A single independently elaborated chip. [Project] is the compatible spelling. *)
+module Chip_target = Project
+module Project = Chip_target
+module Chip_catalog = Chip_catalog
 module Hardware_variant = Hardware_variant
 module Resource_preparation = Resource_preparation
 module Resource_snapshot = Elaboration.Resource_snapshot

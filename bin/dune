@@ -1,4 +1,11 @@
 (executable
+ (name chip_targets)
+ (modules chip_targets)
+ (public_name hardcaml-asic-targets)
+ (package hardcaml_asic)
+ (libraries hardcaml_asic unix yojson))
+
+(executable
  (name experimental_execute)
  (modules experimental_execute)
  (public_name hardcaml-asic-experimental-execute)
