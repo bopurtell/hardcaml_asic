@@ -133,6 +133,35 @@ before discovery. Planning and bundle emission use Git HEAD for provenance.
 To verify the installed starter end to end from this checkout, run
 `STARTER_TEST_CHECKOUT_DIR="$PWD/_build" python3 starter/test_render.py "$(command -v hardcaml-asic-starter)" --consumer`.
 
+### Add an IP library or module to a Dune project
+
+Install the provider with `./install.sh` in the selected opam switch. To
+inspect exactly what Silver will create, run:
+
+```sh
+hardcaml-asic-starter render-ip --name decoder --template sample
+hardcaml-asic-starter render-module --name priority
+```
+
+Both render deterministic file descriptors as above, without touching the
+working tree. Use names matching `[a-z][a-z0-9_]{0,63}`. IP paths are
+relative to the project root: `ip/decoder/dune` declares a private Dune
+library named `ip_decoder`; its initial module is `block.ml`. `sample` provides
+a bitwise inverter and a Hardcaml Cyclesim test for three eight-bit inputs.
+`empty` provides an editable module and test stub. After creation, run:
+
+```sh
+dune build ip/decoder/ip_decoder.cmxa
+dune runtest ip/decoder
+```
+
+To use the sample in another library in the same project, add `ip_decoder` to
+its `(libraries ...)` and call `Ip_decoder.Block.create signal`. Module rendering
+produces just `priority.ml`, relative to the selected library directory
+(e.g. `ip/decoder/priority.ml`). The generated Dune stanza automatically
+includes new modules. If a custom stanza lists modules explicitly, include
+`priority` in that list yourself.
+
 ### Library only (no PDK, no Docker)
 
 ```sh

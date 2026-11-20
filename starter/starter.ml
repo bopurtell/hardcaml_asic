@@ -187,7 +187,43 @@ let () =
       | _ -> file contents)
 ;;
 
-let render ~existing name =
+let valid_source_name s = valid_name s && not (String.contains s '-')
+
+let empty_module = "(* Add the interface and implementation of your hardware block here. *)\n"
+
+let ip_files name template =
+  let library = "ip_" ^ name in
+  let block, test =
+    match template with
+    | `Empty -> empty_module, "(* Add tests for your block here. *)\nlet () = ()\n"
+    | `Sample ->
+      ( "(* Invert each bit of the input bus. *)\nlet create data = Hardcaml.Signal.(~:) data\n"
+      , Printf.sprintf
+          {|open Hardcaml
+
+let () =
+  let data = Signal.input "data" 8 in
+  let output = Signal.output "inverted" (%s.Block.create data) in
+  let sim = Cyclesim.create (Circuit.create_exn ~name:"inverter" [ output ]) in
+  List.iter (fun input ->
+    Cyclesim.in_port sim "data" := Bits.of_int_trunc ~width:8 input;
+    Cyclesim.cycle sim;
+    let actual = !(Cyclesim.out_port ~clock_edge:After sim "inverted") in
+    assert (Bits.equal actual (Bits.of_int_trunc ~width:8 (input lxor 0xff))))
+    [ 0x00; 0xa5; 0xff ]
+|}
+          (String.capitalize_ascii library) )
+  in
+  [ "dune", Printf.sprintf "(library\n (name %s)\n (libraries hardcaml))\n" library
+  ; "block.ml", block
+  ; ( "test/dune"
+    , Printf.sprintf "(test\n (name test_block)\n (libraries %s hardcaml))\n" library )
+  ; "test/test_block.ml", test
+  ]
+  |> List.map (fun (path, contents) -> "ip/" ^ name ^ "/" ^ path, contents)
+;;
+
+let render entries =
   let file (path, contents) =
     `Assoc [ "path", `String path; "contents", `String contents ]
   in
@@ -195,7 +231,7 @@ let render ~existing name =
     [ "schema_version", `Int 1
     ; "provider", `String "hardcaml_asic"
     ; "version", `String "0.1.0"
-    ; "files", `List (List.map file (files ~existing name))
+    ; "files", `List (List.map file entries)
     ]
   |> Yojson.Basic.to_string
   |> print_endline
@@ -204,10 +240,18 @@ let render ~existing name =
 let () =
   match Array.to_list Sys.argv with
   | [ _; (("render" | "render-existing") as command); "--name"; name ]
-    when valid_name name -> render ~existing:(command = "render-existing") name
+    when valid_name name -> render (files ~existing:(command = "render-existing") name)
+  | [ _; "render-ip"; "--name"; name; "--template"; (("empty" | "sample") as template) ]
+    when valid_source_name name ->
+    render (ip_files name (if template = "empty" then `Empty else `Sample))
+  | [ _; "render-module"; "--name"; name ] when valid_source_name name ->
+    render [ name ^ ".ml", empty_module ]
   | _ ->
     prerr_endline
       "usage: hardcaml-asic-starter render|render-existing --name NAME (NAME matches \
-       [a-z][a-z0-9_-]{0,63})";
+       [a-z][a-z0-9_-]{0,63})\n\
+       \       hardcaml-asic-starter render-ip --name NAME --template empty|sample\n\
+       \       hardcaml-asic-starter render-module --name NAME\n\
+       IP and module names match [a-z][a-z0-9_]{0,63}";
     exit 2
 ;;

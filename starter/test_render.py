@@ -44,12 +44,54 @@ with tempfile.TemporaryDirectory(dir=os.environ.get("STARTER_TEST_CHECKOUT_DIR")
     assert all(f["path"].startswith("asic_led-demo/") for f in nested)
     assert not any(f["path"].endswith("dune-project") for f in nested)
     assert invoke("render-existing", "--name", "../escape").returncode == 2
+    for bad_args in [
+        ("render-ip", "--name", "adder", "--template", "missing"),
+        ("render-ip", "--name", "adder"),
+        ("render-ip", "--name", "../adder", "--template", "empty"),
+        ("render-module", "--name", "two-words"),
+        ("render-module", "--name", "../escape"),
+    ]:
+        bad = invoke(*bad_args)
+        assert bad.returncode == 2 and bad.stderr and not bad.stdout
+
+    def recipe(*args):
+        output = invoke(*args)
+        output.check_returncode()
+        assert not output.stderr and output.stdout == invoke(*args).stdout
+        descriptor = json.loads(output.stdout)
+        assert {k: v for k, v in descriptor.items() if k != "files"} == {
+            k: v for k, v in data.items() if k != "files"}
+        return descriptor["files"]
+
+    ips = {}
+    for template in ["empty", "sample"]:
+        entries = recipe("render-ip", "--name", template, "--template", template)
+        assert sorted(f["path"] for f in entries) == [
+            f"ip/{template}/{p}" for p in ["block.ml", "dune", "test/dune", "test/test_block.ml"]]
+        ips[template] = entries
+    module = recipe("render-module", "--name", "new_block")
+    assert [f["path"] for f in module] == ["new_block.ml"]
+    assert not list(root.iterdir())
     if "--consumer" in sys.argv[2:]:
         for f in data["files"]:
             (root / f["path"]).write_text(f["contents"])
         for command in [["build"], ["runtest"], ["exec", "./rtl.exe"]]:
             result = subprocess.run(["dune", command[0], "--root", ".", *command[1:]], cwd=root, check=True, stdout=subprocess.PIPE)
         assert b"module tt_um_led_demo" in result.stdout
+        for template, entries in ips.items():
+            dest = root / "ip" / template
+            for base, files in [(root, entries), (dest, module)]:
+                for f in files:
+                    path = base / f["path"]
+                    path.parent.mkdir(exist_ok=True, parents=True)
+                    with path.open("x") as out:
+                        out.write(f["contents"])
+            # Compile a downstream reference to the added module as well.
+            with (dest / "test/test_block.ml").open("a") as out:
+                out.write(f"\nmodule Added = Ip_{template}.New_block\n")
+            subprocess.run(["dune", "build", "--root", ".", f"ip/{template}/ip_{template}.cmxa"],
+                           cwd=root, check=True)
+            subprocess.run(["dune", "runtest", "--root", ".", f"ip/{template}"], cwd=root, check=True)
         # Same project already has a chip library, a root Dune file, and sources.
         for f in nested:
             path = root / f["path"]
