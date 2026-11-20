@@ -158,19 +158,18 @@ Project declaration
 ```
 
 Elaboration constructs a Hardcaml circuit, not a synthesis result.
-`Project.elaborate` returns `Elaborated_project.t`. `Project.elaborate_for_flow`
+`Chip_target.elaborate` returns `Elaborated_project.t`. `Chip_target.elaborate_for_flow`
 adds validation and returns `Resolved_flow.t`, which keeps that project in its
 `elaborated_project` field. Rendering emits inputs; execution invokes tools
 separately.
 
-The consumer owns its project constructor (the FIFO specimen's
-`Fifo_asic.project ()`), declaration, wrapper and source inventory.
-`Project.create ?source_inputs` defaults to `[]`. `Project.describe` returns
+The consumer owns each chip target's constructor, declaration, wrapper and source inventory.
+`Chip_target.create ?source_inputs` defaults to `[]`. `Chip_target.describe` returns
 declaration facts as an S-expression with no design construction, resolution or
 I/O. It is not a Workbench protocol. Root and output paths are execution
 arguments, not declaration fields.
 
-`Project.emit_bundle ?inputs ?include_simulation t ~source_root ~output_dir`
+`Chip_target.emit_bundle ?inputs ?include_simulation t ~source_root ~output_dir`
 owns the shared orchestration:
 
 1. Reject an empty inventory before constructing the design.
@@ -180,7 +179,7 @@ owns the shared orchestration:
 4. Render, then write.
 
 Nothing is written until rendering succeeds. `Bundle.write` needs a new or empty
-directory and is not atomic. `Project.emit_bundle_to_store` uses
+directory and is not atomic. `Chip_target.emit_bundle_to_store` uses
 `Bundle.publish` instead: complete private `.objects` data is verified first,
 then exposed through an exclusive identity symlink. Reuse validates the exact tree
 and bytes.
@@ -195,7 +194,7 @@ and the [entry-point guide](guides/bundle-emission.md#project-centered-entry-poi
 Invariants:
 
 - Dependencies are acyclic. Project composes Bundle and Resolved_flow, which use
-  Elaborated_project rather than calling back into Project.
+  Elaborated_project rather than calling back into Chip_target.
 - Contexts close on success or failure, so registration cannot leak into another
   elaboration. Resource identities use explicit names and scope paths, and
   inventories are sorted.
@@ -214,7 +213,7 @@ references, not verified physical evidence.
 
 Resource preparation is a first-class **overall-workflow preparation operation**,
 not a member of the LibreLane physical-stage sequence. A project-owned executable
-constructs its project and invokes `Project.prepare_resources`; the execution
+constructs its chip target and invokes `Chip_target.prepare_resources`; the execution
 service records its lifecycle and immutable successful snapshot. The generic CLI
 inspects retained attempts without project code, current source files or tools.
 See the [preparation contract](development/resource-preparation.md) and
@@ -249,7 +248,7 @@ framework is a blanket prerequisite for other work.
 ## 6. Configuration ownership and constraints
 
 The project declaration owns target, clock, resources and supported timing intent.
-Optional checked `Hardware_variant` assignments pass through `Project.of_variant`
+Optional checked `Hardware_variant` assignments pass through `Chip_target.of_variant`
 to the factory and into existing bundle/plan identity. They are distinct from resource
 policy and backend flow profiles. Identity establishes declared association, not
 semantic parameter use or compiled-source attestation. The headless

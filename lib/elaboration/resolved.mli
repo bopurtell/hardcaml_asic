@@ -3,7 +3,7 @@
 (* Module: "elaboration/resolved.mli" *)
 (* Validated TT/LibreLane resolution results for Bundle and design observers.
 
-   Only [resolve], also called by Project.elaborate_for_flow, constructs a result.
+    Only [resolve], also called by Chip_target.elaborate_for_flow, constructs a result.
    Private records preserve field reads and pattern matching but forbid construction
    and record updates. There is no unchecked constructor or deserializer.
 

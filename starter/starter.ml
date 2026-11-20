@@ -7,55 +7,122 @@ let valid_name s =
   && String.for_all (fun c -> lower c || (c >= '0' && c <= '9') || c = '_' || c = '-') s
 ;;
 
-let files ?(existing = false) name =
+let valid_source_name s = valid_name s && not (String.contains s '-')
+let mapping = "ui_in:uo_out:comb8"
+
+let usage =
+  "usage: hardcaml-asic-starter render --name NAME (Dune root and first chip target)\n\
+  \       hardcaml-asic-starter render-target --name NAME (chip target only)\n\
+  \       hardcaml-asic-starter render-target --name NAME --library ip_NAME --mapping \
+   ui_in:uo_out:comb8\n\
+  \         Eight-bit combinational Block.create: ui_in to uo_out; clock/reset unused.\n\
+  \       hardcaml-asic-starter render-ip --name NAME --template empty|sample\n\
+  \       hardcaml-asic-starter render-module --name NAME\n\
+   Target names match [a-z][a-z0-9_-]{0,63}; IP and module names match \
+   [a-z][a-z0-9_]{0,63}."
+;;
+
+let target_files ?library name =
   let dir = "asic_" ^ name in
+  (* Preserve the external id verbatim; privately escape '-' and '_' for
+     Dune/OCaml/Verilog so a-b and a_b can coexist without a name collision. *)
   let id =
-    String.map
-      (function
-        | '-' -> '_'
-        | c -> c)
-      name
+    String.concat
+      "_h"
+      (String.split_on_char '-' (String.concat "_u" (String.split_on_char '_' name)))
   in
-  let base =
+  let chip_lib = "chip_target_" ^ id in
+  let consumer contents =
+    Printf.sprintf
+      "module Chip = %s.Chip\n\n%s"
+      (String.capitalize_ascii chip_lib)
+      contents
+  in
+  let design, description, output, assumptions, ip_sources =
+    match library with
+    | None ->
+      ( {|let spec = Signal.Reg_spec.create ~clock:i.clk ~clear:(Signal.(~:) i.rst_n) () in
+    let data = Signal.reg spec i.ui_in in|}
+      , "Eight-bit register"
+      , "Registered data"
+      , "On the rising edge of clk, capture ui_in on uo_out; low rst_n synchronously \
+         clears it."
+      , [] )
+    | Some lib ->
+      let ip = "ip/" ^ String.sub lib 3 (String.length lib - 3) ^ "/" in
+      ( Printf.sprintf
+          "(* Combinational: clk and rst_n are intentionally unused. *)\n\
+          \    let data = %s.Block.create i.ui_in in"
+          (String.capitalize_ascii lib)
+      , "Eight-bit combinational IP"
+      , "Combinational IP output"
+      , Printf.sprintf
+          "ui_in[7:0] -> %s.Block.create -> uo_out[7:0]. The IP uses neither clk nor \
+           rst_n."
+          lib
+      , List.map (( ^ ) ip) [ "dune"; "block.ml"; "chip-interface.json" ] )
+  in
+  let sources =
+    ("dune-project" :: List.map (Filename.concat dir) [ "dune"; "chip.ml"; "project.ml" ])
+    @ ip_sources
+    |> List.map (Printf.sprintf "%S")
+    |> String.concat "; "
+  in
+  let entries =
     [ ( "README.md"
       , Printf.sprintf
           {|# %s
 
-This Tiny Tapeout design registers an eight-bit input on the rising edge of
-`clk`. Driving `rst_n` low at the edge clears the register. Edit `chip.ml` to
-change the circuit, clock, pin descriptions or ASIC target, and update
-`test_chip.ml` to match.
+Tiny Tapeout 6×4, IHP SG13CMOS5L. Harness clock constraint: clk, 20 ns.
+%s Unused bidirectional pins are disabled. Edit `chip.ml` and `test_chip.ml` here.
 
 With `hardcaml_asic` installed in your active OCaml switch:
 
 ```sh
-dune build
-dune runtest
-dune exec ./rtl.exe > chip.v
+dune build %s/project.exe
+dune runtest %s
+dune exec ./%s/rtl.exe > chip.v
+dune exec ./%s/project.exe -- chip list --json
+dune exec ./%s/project.exe -- flow list --json
 ```
 
-The test simulates the declared project. The last command explicitly resolves
-the implementation and prints Verilog. None of these steps needs a PDK.
+Run from the enclosing project root. RTL and simulation need no PDK.
 |}
-          name )
-    ; "dune-project", Printf.sprintf "(lang dune 3.17)\n(name %s)\n" id
+          name
+          assumptions
+          dir
+          dir
+          dir
+          dir
+          dir )
     ; ( "dune"
-      , {|(library
- (name chip)
+      , Printf.sprintf
+          {|(library
+ (name %s)
  (modules chip)
- (libraries core hardcaml hardcaml_asic))
+ (libraries core hardcaml hardcaml_asic%s))
 
 (test
  (name test_chip)
  (modules test_chip)
- (libraries chip core hardcaml hardcaml_asic))
+ (libraries %s core hardcaml hardcaml_asic%s))
 
 (executable
  (name rtl)
  (modules rtl)
- (libraries chip core hardcaml hardcaml_asic))
+ (libraries %s core hardcaml hardcaml_asic))
+
+(executable
+ (name project)
+ (modules project)
+ (libraries %s core core_unix.sys_unix hardcaml_asic unix yojson))
 |}
-      )
+          chip_lib
+          (Option.fold ~none:"" ~some:(( ^ ) " ") library)
+          chip_lib
+          (Option.fold ~none:"" ~some:(( ^ ) " ") library)
+          chip_lib
+          chip_lib )
     ; ( "chip.ml"
       , Printf.sprintf
           {|open Core
@@ -69,8 +136,8 @@ module Design = struct
   let name = "tt_um_%s"
 
   let create _context (i : _ I.t) =
-    let spec = Signal.Reg_spec.create ~clock:i.clk ~clear:(Signal.(~:) i.rst_n) () in
-    { O.uo_out = Signal.reg spec i.ui_in
+    %s
+    { O.uo_out = data
     ; uio_out = Signal.zero 8
     ; uio_oe = Signal.zero 8
     }
@@ -79,15 +146,17 @@ end
 let pinout =
   List.concat_map [ Pinout.Bank.Ui; Uo; Uio ] ~f:(fun bank ->
     let description =
-      match bank with Ui -> "Data input" | Uo -> "Registered data" | Uio -> "Unused"
+      match bank with Ui -> "Data input" | Uo -> %S | Uio -> "Unused"
     in
     List.init 8 ~f:(fun bit -> { Pinout.bank; bit; description }))
 
-let project =
-  Hardcaml_asic.Project.create
-    %s
+let target_id = %S
+
+let chip_target =
+  Hardcaml_asic.Chip_target.create
+    ~source_inputs:[%s]
     ~name:"%s"
-    ~metadata:{ title = "%s"; author = "Starter"; description = "Eight-bit register" }
+    ~metadata:{ title = "%s"; author = "Starter"; description = %S }
     ~design:(module Design)
     ~target:{ harness = Tiny_tapeout { tiles = T6x4 }; technology = Technology.ihp_sg13cmos5l }
     ~flow:(Flow.librelane ~overrides:(Tt_cmos5l.overrides ()) Hardening)
@@ -98,23 +167,22 @@ let project =
   |> Or_error.ok_exn
 |}
           id
-          (if existing
-           then
-             Printf.sprintf
-               "~source_inputs:[\"dune-project\"; %S; %S; %S]"
-               (dir ^ "/dune")
-               (dir ^ "/chip.ml")
-               (dir ^ "/project.ml")
-           else "")
+          design
+          output
+          name
+          sources
           id
-          name )
+          name
+          description )
+    ; "project.ml", consumer Project_template.contents
     ; ( "rtl.ml"
-      , {|open Core
+      , consumer
+          {|open Core
 open Hardcaml
 open Hardcaml_asic
 
 let () =
-  let resolved = Hardcaml_asic.Project.elaborate_for_flow Chip.project |> Or_error.ok_exn in
+  let resolved = Chip_target.elaborate_for_flow Chip.chip_target |> Or_error.ok_exn in
   Rtl.create Verilog [ Elaborated_project.circuit resolved.elaborated_project ]
   |> Rtl.full_hierarchy
   |> Rope.to_string
@@ -122,13 +190,19 @@ let () =
 |}
       )
     ; ( "test_chip.ml"
-      , {|open Core
+      , consumer
+          ({|open Core
 open Hardcaml
 open Hardcaml_asic
 
 let () =
-  let project = Hardcaml_asic.Project.elaborate Chip.project ~mode:Simulation |> Or_error.ok_exn in
-  let sim = Cyclesim.create (Elaborated_project.circuit project) in
+  let elaborated = Chip_target.elaborate Chip.chip_target ~mode:Simulation |> Or_error.ok_exn in
+  let sim = Cyclesim.create (Elaborated_project.circuit elaborated) in
+|}
+           ^
+           match library with
+           | None ->
+             {|
   let step reset_n data expected =
     Cyclesim.in_port sim "rst_n" := Bits.of_int_trunc ~width:1 reset_n;
     Cyclesim.in_port sim "ui_in" := Bits.of_int_trunc ~width:8 data;
@@ -141,55 +215,34 @@ let () =
   step 0 0xff 0;
   step 1 0x3c 0x3c
 |}
-      )
+           | Some lib ->
+             Printf.sprintf
+               {|
+  let input = Signal.input "input" 8 in
+  let reference = Signal.output "result" (%s.Block.create input) in
+  let ref_sim = Cyclesim.create (Circuit.create_exn ~name:"reference" [reference]) in
+  for n = 0 to 255 do
+    let data = Bits.of_int_trunc ~width:8 n in
+    Cyclesim.in_port sim "ui_in" := data;
+    Cyclesim.in_port ref_sim "input" := data;
+    Cyclesim.cycle sim;
+    Cyclesim.cycle ref_sim;
+    (* Before the active edge: a mistakenly registered wrapper must fail. *)
+    let output s port = !(Cyclesim.out_port ~clock_edge:Before s port) in
+    assert (Bits.equal (output sim "uo_out") (output ref_sim "result"));
+    assert (Bits.equal (output sim "uio_oe") (Bits.zero 8));
+    assert (Bits.equal (output sim "uio_out") (Bits.zero 8))
+  done
+|}
+               (String.capitalize_ascii lib)) )
     ]
   in
-  if not existing
-  then base
-  else
-    ("project.ml", Project_template.contents) :: base
-    |> List.filter_map (fun (path, contents) ->
-      let file contents = Some (dir ^ "/" ^ path, contents) in
-      match path with
-      | "dune-project" -> None
-      | "dune" ->
-        file
-          {|(executables
- (names project test_chip rtl)
- (libraries core core_unix.sys_unix hardcaml hardcaml_asic yojson))
-
-(rule
- (alias runtest)
- (action (run %{exe:test_chip.exe})))
-|}
-      | "chip.ml" -> file (contents ^ Printf.sprintf "\nlet target_id = %S\n" name)
-      | "README.md" ->
-        file
-          (Printf.sprintf
-             "# %s\n\n\
-              From the existing project root:\n\n\
-              ```sh\n\
-              dune build %s/project.exe\n\
-              dune runtest %s\n\
-              dune exec ./%s/project.exe -- flow list --json\n\
-              dune exec ./%s/project.exe -- flow plan --endpoint synthesis --source-root \
-              \"$PWD\" --json\n\
-              ```\n\n\
-              Edit `chip.ml` and `test_chip.ml` here. Build the executable and reopen \
-              the project in Silver to discover the standard flow. Flow planning \
-              requires a Git checkout with a HEAD for source provenance, but does not \
-              require an installed PDK.\n"
-             name
-             dir
-             dir
-             dir
-             dir)
-      | _ -> file contents)
+  List.map (fun (path, contents) -> Filename.concat dir path, contents) entries
 ;;
 
-let valid_source_name s = valid_name s && not (String.contains s '-')
-
-let empty_module = "(* Add the interface and implementation of your hardware block here. *)\n"
+let empty_module =
+  "(* Add the interface and implementation of your hardware block here. *)\n"
+;;
 
 let ip_files name template =
   let library = "ip_" ^ name in
@@ -197,7 +250,8 @@ let ip_files name template =
     match template with
     | `Empty -> empty_module, "(* Add tests for your block here. *)\nlet () = ()\n"
     | `Sample ->
-      ( "(* Invert each bit of the input bus. *)\nlet create data = Hardcaml.Signal.(~:) data\n"
+      ( "(* Invert each bit of the input bus. *)\n\
+         let create data = Hardcaml.Signal.(~:) data\n"
       , Printf.sprintf
           {|open Hardcaml
 
@@ -214,12 +268,28 @@ let () =
 |}
           (String.capitalize_ascii library) )
   in
-  [ "dune", Printf.sprintf "(library\n (name %s)\n (libraries hardcaml))\n" library
-  ; "block.ml", block
-  ; ( "test/dune"
-    , Printf.sprintf "(test\n (name test_block)\n (libraries %s hardcaml))\n" library )
-  ; "test/test_block.ml", test
-  ]
+  ([ "dune", Printf.sprintf "(library\n (name %s)\n (libraries hardcaml))\n" library
+   ; "block.ml", block
+   ; ( "test/dune"
+     , Printf.sprintf "(test\n (name test_block)\n (libraries %s hardcaml))\n" library )
+   ; "test/test_block.ml", test
+   ]
+   @
+   match template with
+   | `Empty -> []
+   | `Sample ->
+     [ ( "chip-interface.json"
+       , Yojson.Basic.pretty_to_string
+           (`Assoc
+             [ "schema_version", `Int 1
+             ; "library", `String library
+             ; "entrypoint", `String "Block.create"
+             ; "mapping", `String mapping
+             ; "clock", `String "unused"
+             ; "reset", `String "unused"
+             ])
+         ^ "\n" )
+     ])
   |> List.map (fun (path, contents) -> "ip/" ^ name ^ "/" ^ path, contents)
 ;;
 
@@ -239,19 +309,24 @@ let render entries =
 
 let () =
   match Array.to_list Sys.argv with
-  | [ _; (("render" | "render-existing") as command); "--name"; name ]
-    when valid_name name -> render (files ~existing:(command = "render-existing") name)
+  | [ _; ("--help" | "-h") ] -> print_endline usage
+  | [ _; "render"; "--name"; name ] when valid_name name ->
+    render
+      (("dune-project", Printf.sprintf "(lang dune 3.17)\n(name %s)\n" name)
+       :: target_files name)
+  | [ _; ("render-target" | "render-existing"); "--name"; name ] when valid_name name ->
+    render (target_files name)
+  | [ _; "render-target"; "--name"; name; "--library"; library; "--mapping"; m ]
+    when valid_name name
+         && String.starts_with ~prefix:"ip_" library
+         && valid_source_name (String.sub library 3 (String.length library - 3))
+         && m = mapping -> render (target_files ~library name)
   | [ _; "render-ip"; "--name"; name; "--template"; (("empty" | "sample") as template) ]
     when valid_source_name name ->
     render (ip_files name (if template = "empty" then `Empty else `Sample))
   | [ _; "render-module"; "--name"; name ] when valid_source_name name ->
     render [ name ^ ".ml", empty_module ]
   | _ ->
-    prerr_endline
-      "usage: hardcaml-asic-starter render|render-existing --name NAME (NAME matches \
-       [a-z][a-z0-9_-]{0,63})\n\
-       \       hardcaml-asic-starter render-ip --name NAME --template empty|sample\n\
-       \       hardcaml-asic-starter render-module --name NAME\n\
-       IP and module names match [a-z][a-z0-9_]{0,63}";
+    prerr_endline usage;
     exit 2
 ;;

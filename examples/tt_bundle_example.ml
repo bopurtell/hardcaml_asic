@@ -66,16 +66,16 @@ let project kind =
   let design, title, description =
     match kind with
     | "observable" ->
-      ( (module Observable : Project.Design)
+      ( (module Observable : Chip_target.Design)
       , "ASIC observable example"
       , "Registered TT input observation" )
     | "memory" ->
-      ( (module Memory : Project.Design)
+      ( (module Memory : Chip_target.Design)
       , "ASIC memory example"
       , "Four-word registered memory with whole-word load and readback" )
     | _ -> failwith "kind must be observable or memory"
   in
-  Project.create
+  Chip_target.create
     ~name:("asic_" ^ kind)
     ~metadata:{ title; author = "hardcaml_asic"; description }
     ~design
@@ -137,9 +137,9 @@ let () =
   let output_dir = argv.(2) in
   let source_root = if Array.length argv = 4 then argv.(3) else "." in
   let project = project kind in
-  let resolved = Project.elaborate_for_flow project |> Or_error.ok_exn in
+  let resolved = Chip_target.elaborate_for_flow project |> Or_error.ok_exn in
   let simulation_project =
-    Project.elaborate project ~mode:Simulation |> Or_error.ok_exn
+    Chip_target.elaborate project ~mode:Simulation |> Or_error.ok_exn
   in
   let bundle =
     Bundle.render

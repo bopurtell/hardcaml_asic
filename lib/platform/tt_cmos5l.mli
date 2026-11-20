@@ -82,7 +82,7 @@ val template_overrides : Flow.Config.Librelane.Override.t list
     Raises, naming the keys, if [without] names a key that is not a template default (so
     a typo cannot silently leave the default in place), or if [without] and [extra] name
     the same key. A key repeated within [extra] is NOT caught here; {!Flow.Librelane}'s
-    own validation reports it when {!Project.create} runs. *)
+    own validation reports it when {!Chip_target.create} runs. *)
 val overrides
   :  ?without:string list
   -> ?extra:Flow.Config.Librelane.Override.t list

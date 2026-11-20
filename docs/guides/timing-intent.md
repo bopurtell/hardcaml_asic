@@ -21,7 +21,7 @@ exact registration inventory and direct predecessor-Q/downstream-D connections.
 The attribute is preservation intent; successful native mapping is separate evidence.
 
 Use `Timing.create ~input_delays ~output_delays ~stages ~exceptions ()` in
-`Project.create`. Existing two-field Timing record literals need migration to
+`Chip_target.create`. Existing two-field Timing record literals need migration to
 `Timing.create` (or explicit new empty `stages`/`exceptions` fields). `Timing.empty`
 retains no timing exceptions. Existing min/max I/O delay semantics are unchanged.
 

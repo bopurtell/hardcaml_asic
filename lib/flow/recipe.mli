@@ -2,7 +2,7 @@ open! Core
 
 (** Validated schema-4 recipes for the opt-in provider [stages --plan] command. Pure
     declarations: no I/O, process invocation, checkpoint validation or tool probing.
-    Independent of [Project.create], bundle identity and run identity. *)
+    Independent of [Chip_target.create], bundle identity and run identity. *)
 type t [@@deriving sexp_of]
 
 (** Fresh sequences start at synthesis. Resumed sequences start immediately after

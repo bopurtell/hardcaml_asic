@@ -1,15 +1,35 @@
+module Posix = Unix
 open Core
 open Hardcaml_asic
 
 let checked = Or_error.ok_exn
 let print json = print_endline (Yojson.Safe.to_string json)
 
+(* Silver runs this CLI in the enclosing project root. Catalog discovery does
+   not build targets. Flow dispatch uses an already-built target, preserving the
+   root for relative source paths. A forwarded request cannot be forwarded again. *)
+let target_catalog () =
+  if Stdlib.Sys.file_exists Chip_catalog.filename
+  then Some (Chip_catalog.load Chip_catalog.filename |> checked)
+  else None
+
+let chip_list () =
+  let default, ids = match target_catalog () with
+    | None -> Chip.target_id, [Chip.target_id]
+    | Some c -> Chip_catalog.default_target c, List.map (Chip_catalog.entries c) ~f:(fun e -> e.id)
+  in
+  let variant = `Assoc ["id", `String "default"; "label", `String "Default"] in
+  let chip id = `Assoc ["id", `String id; "label", `String id; "default_variant", `String "default";
+                         "variants", `List [variant]] in
+  print (`Assoc ["schema_version", `Int 1; "default_chip", `String default;
+                 "chips", `List (List.map ids ~f:chip)])
+
 let entry =
   let methodology = Flow.Methodology.create ~id:"standard" ~label:"Standard"
     ~description:"LibreLane physical-stage prefixes" ~backend_recipe:Librelane_classic_v1
     ~endpoints:Flow.Stage.all ~configurable:[] ~defaults:[] |> checked in
   let profile = Flow.Profile.create ~id:"balanced" ~label:"Balanced"
-    ~description:"Default register implementation" ~assignments:[] |> checked in
+    ~description:"Default chip target implementation" ~assignments:[] |> checked in
   Flow.Catalog.Entry.create ~methodology ~profiles:[profile] ~default_profile:"balanced" |> checked
 
 let catalog = Flow.Catalog.create ~entries:[entry] ~default_flow:"standard"
@@ -34,6 +54,21 @@ let flow command args =
   let get k = Hashtbl.find values k in
   let require k v = Option.iter (get k) ~f:(fun s ->
     if not (String.equal s v) then failwith ("Unknown selection: " ^ s)) in
+  (match get "--chip" with
+   | Some id when not (String.equal id Chip.target_id) ->
+     if Option.is_some (Sys.getenv "HARDCAML_ASIC_FORWARDED_TARGET")
+     then failwith "Catalog executable does not declare the selected chip target";
+     let c = target_catalog () |> Option.value_exn ~message:"No chip target catalog" in
+     let entry = Chip_catalog.select c ~id:(Some id) |> checked in
+     (* Our generated CLI lives at CONTEXT/asic_NAME/project.exe. Stay in
+        that same build context, including a custom --build-dir. *)
+     let context = Posix.realpath Stdlib.Sys.executable_name |> Filename.dirname |> Filename.dirname in
+     let path = Filename.concat context entry.executable in
+     if not (Stdlib.Sys.file_exists path)
+     then failwith ("Build the selected chip target: dune build " ^ entry.executable);
+     let env = Array.append (Posix.environment ()) [|"HARDCAML_ASIC_FORWARDED_TARGET=" ^ id|] in
+     Posix.execve path (Array.of_list (path :: "flow" :: command :: args)) env
+   | _ -> ());
   require "--chip" Chip.target_id;
   require "--variant" "default";
   match command with
@@ -45,7 +80,7 @@ let flow command args =
     let request = Flow.Parameter.check_assignments ~configurable:[] [] |> checked in
     let source_root = Option.value (get "--source-root") ~default:(Sys_unix.getcwd ()) in
     let prepared = Methodology_plan.prepare ~catalog ~selection ~endpoint ~request ~catalog_inputs:[]
-      ?expected_plan_identity:(get "--expected-plan-identity") Chip.project ~source_root |> checked in
+      ?expected_plan_identity:(get "--expected-plan-identity") Chip.chip_target ~source_root |> checked in
     let plan = Methodology_plan.Prepared.plan prepared in
     if String.equal command "plan" then print (Methodology_plan.to_yojson plan)
     else (
@@ -59,10 +94,6 @@ let flow command args =
 
 let () =
   match Array.to_list (Sys.get_argv ()) with
-  | [_; "chip"; "list"; "--json"] ->
-    let variant = `Assoc ["id", `String "default"; "label", `String "Default"] in
-    print (`Assoc ["schema_version", `Int 1; "default_chip", `String Chip.target_id;
-      "chips", `List [`Assoc ["id", `String Chip.target_id; "label", `String Chip.target_id;
-        "default_variant", `String "default"; "variants", `List [variant]]]])
+  | [_; "chip"; "list"; "--json"] -> chip_list ()
   | _ :: "flow" :: command :: args -> flow command args
   | _ -> failwith "Expected chip list --json or flow list|describe|plan|emit"

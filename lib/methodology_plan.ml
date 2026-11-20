@@ -397,8 +397,8 @@ let of_string s = J.decode (fun () -> J.checked (of_yojson (Yojson.Safe.from_str
 
 let of_rendered rendered =
   J.decode (fun () ->
-    let r = Project.Rendered.resolution rendered in
-    let b = Project.Rendered.bundle rendered in
+    let r = Chip_target.Rendered.resolution rendered in
+    let b = Chip_target.Rendered.bundle rendered in
     let methodology =
       match r.methodology with
       | Some m -> m
@@ -467,7 +467,7 @@ let prepare
     Hardcaml_asic_flow_domain.Catalog.resolve ?selection ?request catalog ~endpoint ()
   in
   let%bind rendered =
-    Project.render_result
+    Chip_target.render_result
       ?inputs
       ~methodology
       ?include_simulation
@@ -487,5 +487,5 @@ let prepare
             (expected : string)
             ~actual:(plan.plan_identity : string)]
   in
-  { Prepared.plan; bundle = Project.Rendered.bundle rendered }
+  { Prepared.plan; bundle = Chip_target.Rendered.bundle rendered }
 ;;

@@ -73,8 +73,8 @@ The lightweight installer contract checks run with
   `elaborated_project`, and `Bundle.render ?simulation_build` →
   `?simulation_project`
   ([details](../phase_plan.md#public-api-rename-migration-and-evidence)).
-- `Project.create ?source_inputs` must be nonempty before emission. Emission goes
-  through `Project.emit_bundle` / `Project.emit_bundle_to_store`
+- `Chip_target.create ?source_inputs` must be nonempty before emission. Emission goes
+  through `Chip_target.emit_bundle` / `Chip_target.emit_bundle_to_store`
   ([entry-point guide](bundle-emission.md#project-centered-entry-point)).
 - The installed Python service APIs are retired ([below](#the-installed-hardcaml-asic-flow-command)).
 

@@ -50,8 +50,8 @@ separate operations; existing provisioned `_flow_tools` can be used.
 ## Discover and describe
 
 ```bash
-dune exec -j 20 bin/project.exe -- flow list --json
-dune exec -j 20 bin/project.exe -- flow describe --flow standard --json
+dune exec -j 20 asics/fifo_demo/cli/chip.exe -- flow list --json
+dune exec -j 20 asics/fifo_demo/cli/chip.exe -- flow describe --flow standard --json
 ```
 
 Description includes the flow's profiles and supported parameters. It is not an
@@ -63,7 +63,7 @@ inspection, physical tools or project elaboration.
 First preview a concrete selection:
 
 ```bash
-dune exec -j 20 bin/project.exe -- flow plan \
+dune exec -j 20 asics/fifo_demo/cli/chip.exe -- flow plan \
   --flow standard --profile balanced --endpoint synthesis --json \
   > /tmp/fifo-balanced-plan.json
 
@@ -77,7 +77,7 @@ no execution workspace and runs no EDA tools.
 Launch with the same selection and expected identity:
 
 ```bash
-dune exec -j 20 bin/project.exe -- flow run \
+dune exec -j 20 asics/fifo_demo/cli/chip.exe -- flow run \
   --flow standard --profile balanced --endpoint synthesis \
   --expected-plan-identity "$PLAN_ID"
 ```
@@ -107,7 +107,7 @@ Both plan and run require an endpoint. For a fresh full flow, preview with
 `--endpoint signoff`, then launch with that preview identity and:
 
 ```bash
-dune exec -j 20 bin/project.exe -- flow run \
+dune exec -j 20 asics/fifo_demo/cli/chip.exe -- flow run \
   --flow standard --profile balanced --endpoint signoff \
   --expected-plan-identity "$PLAN_ID" --timeout 3600
 ```

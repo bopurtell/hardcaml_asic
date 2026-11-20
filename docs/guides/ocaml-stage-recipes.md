@@ -9,7 +9,7 @@ provider's opt-in explicit-stage execution contract. Their sources are
 `lib/flow/stage.ml` and `lib/flow/recipe.ml`, and their `.mli` files are the API
 reference. Construction and JSON rendering are pure and require no toolchain.
 
-`Project.create ~flow:(Flow.librelane Hardening)` still selects project adapter
+`Chip_target.create ~flow:(Flow.librelane Hardening)` still selects the target's adapter
 settings and technology views. Emit/publish the input bundle with the existing
 Project API, and supply a **separate recipe file** to `hardcaml-asic-flow stages
 --plan`. The recipe does not enter the bundle manifest or bundle identity. Existing
@@ -191,9 +191,9 @@ dependency pin. With that candidate library/CLI installed and activated, run fro
 that checkout:
 
 ```sh
-dune exec -j 20 bin/stage_recipe/stage_recipe.exe -- --endpoint floorplan > /tmp/floorplan-recipe.json
-dune exec -j 20 bin/stage_recipe/stage_recipe.exe -- --initial-boundary floorplan --endpoint signoff > /tmp/resume-recipe.json
-dune exec -j 20 bin/project.exe -- describe --json
+dune exec -j 20 asics/fifo_demo/cli/stage_recipe/stage_recipe.exe -- --endpoint floorplan > /tmp/floorplan-recipe.json
+dune exec -j 20 asics/fifo_demo/cli/stage_recipe/stage_recipe.exe -- --initial-boundary floorplan --endpoint signoff > /tmp/resume-recipe.json
+dune exec -j 20 asics/fifo_demo/cli/chip.exe -- describe --json
 ```
 
 The recipe command writes JSON to stdout and rejects invalid declarations with
@@ -265,7 +265,7 @@ dune install -j 20 --prefix /tmp/asic-recipe-prefix
 From the sibling checkout, compile against that installed library:
 
 ```sh
-OCAMLPATH="/tmp/asic-recipe-prefix/lib${OCAMLPATH:+:$OCAMLPATH}" dune build -j 20 --build-dir /tmp/asic-recipe-consumer-build bin/stage_recipe/stage_recipe.exe bin/project.exe
+OCAMLPATH="/tmp/asic-recipe-prefix/lib${OCAMLPATH:+:$OCAMLPATH}" dune build -j 20 --build-dir /tmp/asic-recipe-consumer-build asics/fifo_demo/cli/stage_recipe/stage_recipe.exe asics/fifo_demo/cli/chip.exe
 ```
 
 Back in the provider checkout, validate installed bytes with the test-only source

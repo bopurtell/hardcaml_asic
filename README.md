@@ -6,11 +6,11 @@ and keeps traceable, integrity-checked results.
 
 One opam package (`hardcaml_asic`, version 0.1.0) installs:
 
-- the **hardware library** `hardcaml_asic`: project declaration, registered
+- the **hardware library** `hardcaml_asic`: chip target declarations, registered
   resources (memory), target/constraint resolution and bundle emission;
 - **[`hardcaml-asic-targets`](docs/guides/chip-targets.md)**: list and invoke
   independent chip entry points in a Dune project;
-- **`hardcaml-asic-starter`**: render an editable Tiny Tapeout register project
+- **`hardcaml-asic-starter`**: render editable Tiny Tapeout chip targets and IP libraries
   for a caller such as Silver to preview and publish;
 - the **flow domain** `hardcaml_asic.flow_domain`: stages, operations, named
   methodologies, typed parameter profiles and the checked LibreLane mapping;
@@ -65,7 +65,7 @@ The path is deliberately narrow:
 | Flow | LibreLane Classic, through the pinned container image |
 | Memory | Behavioral simulation, explicit flops, or exact IHP 256×16 SRAM through fresh synthesis/full implementation |
 
-The [independent memory example](../hardcaml_asic_example/memory/PHYSICAL.md)
+The [independent memory example](../hardcaml_asic_example/asics/program_memory/physical/PHYSICAL.md)
 passes physical/electrical checks, TT precheck and final-netlist zero-delay replay
 through the public API. The supported physical profile is stock 256×16, R0,
 checked Metal4 power access and real-GDS CMOS5L KLayout, with explicit abstract
@@ -80,7 +80,7 @@ separate, explicit check (see [interpreting results](docs/guides/usage.md#7-inte
 
 ## How it fits together
 
-**Inspect before EDA:** a project CLI can call `Project.prepare_resources` through
+**Inspect before EDA:** a project CLI can call `Chip_target.prepare_resources` through
 the durable preparation service, then use `hardcaml-asic-flow preparation-inspect`
 to browse the saved resource decisions. This is a preparation operation, separate
 from physical stages, with no bundle emission or PDK requirement. See
@@ -88,7 +88,7 @@ from physical stages, with no bundle emission or PDK requirement. See
 [independent example commands](../hardcaml_asic_example/docs/resource_preparation.md).
 
 ```text
-Project.create  ──►  Elaborated_project  ──►  Resolved_flow  ──►  bundle  ──►  execution  ──►  results / archive
+Chip_target.create ► Elaborated_project  ──►  Resolved_flow  ──►  bundle  ──►  execution  ──►  results / archive
  (declaration)       circuit, metadata,       validated TT/         immutable      separate run     collect, report,
                      intent, resources        LibreLane facts       inputs +       ID and records   finalize, archive
                      (no synthesis)                                 manifest
@@ -114,22 +114,24 @@ Execution comes in three forms, all through `hardcaml-asic-flow`:
 ### Render a starter (no build or EDA)
 
 After `./install.sh`, run `hardcaml-asic-starter render --name led-demo`.
-The name must match `[a-z][a-z0-9_-]{0,63}`. Hyphens become underscores in
-Dune and HDL identifiers. The command writes a deterministic JSON object to
+The name must match `[a-z][a-z0-9_-]{0,63}`. Dune library and HDL identifiers
+escape `-` and `_` so distinct chip names remain distinct. The command writes a deterministic JSON object to
 stdout with `schema_version: 1`, `provider: "hardcaml_asic"`, `version: "0.1.0"`
 and `files`, an array of relative `path` and UTF-8 `contents` strings. It takes
 no destination and creates no files. Invalid arguments give exit status 2 and
 a diagnostic on stderr. The caller chooses and checks the destination.
 
-The generated README explains how to edit the design, build with Dune, run
-its register/reset simulation, and print implementation RTL explicitly.
-For an existing Dune root, `hardcaml-asic-starter render-existing --name led-demo`
-uses the same descriptor format but places the design under `asic_led-demo/`.
-It supplies no `dune-project`. Its `project.exe` exposes chip discovery and
+`render` emits `dune-project` plus exactly the files returned by
+`hardcaml-asic-starter render-target --name led-demo`. The latter works in
+an existing Dune project without changing its root. All chip-owned files live
+under `asic_led-demo/`. The README there explains simulation and RTL export.
+The generated `project.exe` exposes chip discovery and
 the standard flow's `list`, `describe`, `plan` and `emit` commands. Silver
 previews and publishes the corresponding host-specific ASIC and preparation
 configuration and chip catalog registration. Build `asic_led-demo/project.exe`
-before discovery. Planning and bundle emission use Git HEAD for provenance.
+before discovery. See [chip targets](docs/guides/chip-targets.md) for
+registration, selecting another chip, and migrating earlier starters.
+Planning and bundle emission use Git HEAD for provenance.
 To verify the installed starter end to end from this checkout, run
 `STARTER_TEST_CHECKOUT_DIR="$PWD/_build" python3 starter/test_render.py "$(command -v hardcaml-asic-starter)" --consumer`.
 
@@ -154,6 +156,24 @@ a bitwise inverter and a Hardcaml Cyclesim test for three eight-bit inputs.
 dune build ip/decoder/ip_decoder.cmxa
 dune runtest ip/decoder
 ```
+
+To wrap the sample in a new chip target:
+
+```sh
+hardcaml-asic-starter render-target --name decode-chip \
+  --library ip_decoder --mapping ui_in:uo_out:comb8
+```
+
+The mapping explicitly connects all eight `ui_in` bits through
+`Ip_decoder.Block.create` to `uo_out`. The IP uses neither clock nor reset;
+`uio_out` and `uio_oe` are zero. Both starter branches declare the Tiny
+Tapeout 6×4 harness, IHP SG13CMOS5L, and a 20 ns `clk` harness constraint.
+The `sample` template emits `ip/decoder/chip-interface.json` declaring this
+contract; the empty template does not. A caller must validate the declaration
+in the chosen library directory before presenting the target as supported:
+the renderer emits source, it does not inspect the filesystem. If the library
+later depends on more implementation files, add them to the target's
+`~source_inputs` before planning or emission.
 
 To use the sample in another library in the same project, add `ip_decoder` to
 its `(libraries ...)` and call `Ip_decoder.Block.create signal`. Module rendering
@@ -234,9 +254,9 @@ opam install hardcaml_asic
  (libraries core hardcaml hardcaml_asic))
 ```
 
-A design implements `Project.Design`; the project declares metadata, target,
+A design implements `Chip_target.Design`; the chip target declares metadata, target,
 flow, clocks, timing, pinout, source inputs and a mandatory resource policy, then
-calls `Project.emit_bundle` or `Project.emit_bundle_to_store`. The
+calls `Chip_target.emit_bundle` or `Chip_target.emit_bundle_to_store`. The
 [user workflow](docs/guides/usage.md) walks through declaration, simulation,
 emission, execution and archiving end to end.
 
@@ -268,7 +288,7 @@ workflow; see [consumer dependency workflow](docs/development/consumer-dependenc
 
 As of 2026-10-25:
 
-- **Delivered:** project declaration through bundle emission; native OCaml CLI
+- **Delivered:** chip target declaration through bundle emission; native OCaml CLI
   and execution services (coarse runs, explicit stages with checkpoints,
   default journals and live watch, collection, reporting, postcheck,
   finalization, archives); default result stores; managed Python/Tcl

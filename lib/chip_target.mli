@@ -1,12 +1,11 @@
 (* University of Florida *)
 (* Author: Bohdan Purtell *)
-(* Module: "project.mli" *)
-(* An immutable ASIC project declaration and its elaboration lifecycle.
+(** An immutable chip target declaration and its elaboration lifecycle.
 
    {v
-   Project.create             validate the declaration (names, metadata, clocks,
+   Chip_target.create         validate the declaration (names, metadata, clocks,
                               policy, adapter settings)
-   Project.elaborate ~mode    fresh Elaboration.Context
+   Chip_target.elaborate ~mode fresh Elaboration.Context
                               -> run the design constructor; resources register and
                                  select implementations (selection failures raise here)
                               -> finalize: validate collected state, close the context
@@ -44,11 +43,11 @@ module type Design = sig
   val create : Elaboration.Context.t -> Signal.t I.t -> Signal.t O.t
 end
 
-(* A project has a type t -> treats as Project.t *)
+(** One independently elaborated chip in the enclosing Dune project. *)
 type t
 
 [@@@ocamlformat "disable"]
-(* Project.create is a function that has members:
+(* Chip_target.create is a function that has members:
   name      : string
   metadata  : Elaboration.Metadata.t
   design    : Design (a module that implements the properties of the Design signature)
@@ -84,7 +83,7 @@ val create
 val name : t -> string
 
 (** Calls the factory exactly once with this checked immutable assignment, then
-    attaches it to the returned project. Factory errors and exceptions return an
+    attaches it to the returned chip target. Factory errors and exceptions return an
     error; existing values are unchanged. Rejects any prior attachment, including
     an equal assignment. This does not elaborate hardware or prove parameter use:
     consumer adapters must validate supported tuples and test semantic conformance. *)
@@ -125,9 +124,9 @@ val prepare_resources
 
 (** Elaborate the selected implementation and validate the TT/LibreLane target,
     wrapper, timing, metadata, and configuration before emission. *)
-(** [methodology] applies only checked configurable assignments, after project
-    assignments, in methodology-default/profile/request order. Other project
-    overrides and the project's flow remain authoritative. No declaration is
+(** [methodology] applies only checked configurable assignments, after chip target
+    assignments, in methodology-default/profile/request order. Other target
+    overrides and the target's flow remain authoritative. No declaration is
     mutated. Without it the legacy settings and emitted bytes are unchanged. *)
 val elaborate_for_flow
   :  ?inputs:Platform.Target.Inputs.t

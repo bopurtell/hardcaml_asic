@@ -1,8 +1,6 @@
 (* University of Florida *)
 (* Author: Bohdan Purtell *)
-(* Module: "project.ml" *)
-(* Behaviour of the actual project system; promises derived from project.mli
-*)
+(* One chip target's declaration and elaboration lifecycle. *)
 
 open! Core
 open! Hardcaml
@@ -45,7 +43,7 @@ let validate_macro_limits policy (technology : Resource.Technology.t) =
     | [] -> Ok ()
     | unknown_macros ->
       Or_error.error_s
-        [%message "macro limits name macros not mapped by the project technology"
+        [%message "macro limits name macros not mapped by the chip target technology"
             ~technology:(technology.name : string) (unknown_macros : string list)]
 ;;
 
@@ -80,7 +78,7 @@ let create
          then Ok ()
          else
            Or_error.error_s
-             [%message "project name must be an identifier" (name : string)])
+            [%message "chip target name must be an identifier" (name : string)])
 
       ; Elaboration.Metadata. validate      metadata  (* nonblank title *)
       ; Platform.Clock.       validate_list clocks    (* ports nonempty, periods > 0, no dups *)
@@ -89,7 +87,7 @@ let create
       ]
 
     (* if there was an error, tag it with where the error belongs in the project scheme *)
-    |> Or_error.tag_s ~tag:[%message "invalid project declaration" (name : string)]
+    |> Or_error.tag_s ~tag:[%message "invalid chip target declaration" (name : string)]
   in
 
   (* Nice return record if all OK; otherwise an error group gets formed; *)
@@ -115,7 +113,7 @@ let of_variant ~variant ~create =
   let open Or_error.Let_syntax in
   let%bind project = Or_error.try_with (fun () -> create variant) |> Or_error.join in
   if Option.is_some project.hardware_variant then
-    Or_error.error_string "project already has a hardware variant (repeated/conflicting attachment)"
+    Or_error.error_string "chip target already has a hardware variant (repeated/conflicting attachment)"
   else Ok { project with hardware_variant = Some variant }
 ;;
 

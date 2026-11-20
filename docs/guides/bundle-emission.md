@@ -1,35 +1,35 @@
 # TT/CMOS5L bundle emission
 
-Emission turns one validated project declaration into an immutable Tiny Tapeout
+Emission turns one validated chip target declaration into an immutable Tiny Tapeout
 project directory (a *bundle*). It never runs synthesis or hardening, invokes EDA
 tools or reads a PDK. Running a bundle is covered in
 [execution and results](flow.md).
 
-## Project-centered entry point
+## Chip target entry point
 
-The consumer owns a project constructor: the FIFO specimen exposes
-`Fifo_asic.project () : Hardcaml_asic.Project.t Core.Or_error.t` and `Tt_wrapper`
-through its facade. Its `asic/project.ml` owns the declaration and source
-inventory, and `bin/project.ml` supplies `describe`, `emit`, `preflight` and
+The consumer owns a chip target constructor: the FIFO specimen exposes
+`Fifo_asic.chip_target () : Hardcaml_asic.Chip_target.t Core.Or_error.t` and `Tt_wrapper`
+through its facade. Its `asics/fifo_demo/project/fifo_chip.ml` owns the declaration and source
+inventory, and `asics/fifo_demo/cli/chip.exe` supplies `describe`, `emit`, `preflight` and
 implementation-only `run` (plus `flow plan|run` for [named flows](named-flows.md)).
-The shared emission orchestration belongs to `Hardcaml_asic.Project.emit_bundle`.
+The shared emission orchestration belongs to `Hardcaml_asic.Chip_target.emit_bundle`.
 
 OCaml consumer code (inside a function with `source_root` and `output_dir` arguments):
 
 ```ocaml
 let open Core.Or_error.Let_syntax in
-let%bind project = Fifo_asic.project () in
-Hardcaml_asic.Project.emit_bundle project ~source_root ~output_dir
+let%bind chip_target = Fifo_asic.chip_target () in
+Hardcaml_asic.Chip_target.emit_bundle chip_target ~source_root ~output_dir
 ```
 
 Shell commands, from the example checkout after
 [development refresh and activation](../development/consumer-dependency-workflow.md#implemented-commands):
 
 ```sh
-dune exec bin/project.exe -- describe
-dune exec bin/project.exe -- emit
+dune exec asics/fifo_demo/cli/chip.exe -- describe
+dune exec asics/fifo_demo/cli/chip.exe -- emit
 # Machine callers request JSON explicitly; exact destination override:
-dune exec bin/project.exe -- emit \
+dune exec asics/fifo_demo/cli/chip.exe -- emit \
   --source-root "$PWD" --output-dir /tmp/fifo-project-bundle --json
 ```
 
@@ -44,12 +44,12 @@ then route to the installed provider. Run requires a stage and performs implemen
 only. See the [command/storage matrix](flow.md#default-result-store-and-cli-contract-4)
 for roots, JSON migration, persistence and separate existing-run operations.
 
-`Project.create ?source_inputs` defaults to `[]`; `Project.source_inputs` returns
+`Chip_target.create ?source_inputs` defaults to `[]`; `Chip_target.source_inputs` returns
 the declaration unchanged, including order and duplicates. Source paths belong to
 the project; the source root and output directory are execution arguments. Creation
 does not read or validate source files, and ordinary elaboration needs no inventory.
 
-`Project.emit_bundle ?inputs ?include_simulation t ~source_root ~output_dir` rejects
+`Chip_target.emit_bundle ?inputs ?include_simulation t ~source_root ~output_dir` rejects
 an empty inventory before invoking the design. It then performs implementation
 elaboration/resolution (forwarding optional `Target.Inputs.t`), optional Simulation
 elaboration, `Bundle.render`, and finally `Bundle.write`. `include_simulation`
@@ -65,7 +65,7 @@ leave partial output. No external flow tools or PDK reads occur during emission.
 The library entry for a caller-owned results store is:
 
 ```ocaml
-Project.emit_bundle_to_store ?inputs ?include_simulation project
+Chip_target.emit_bundle_to_store ?inputs ?include_simulation chip_target
   ~source_root ~store_dir
 (* (Bundle.t * Bundle.Publication.t) Core.Or_error.t *)
 ```
@@ -82,7 +82,7 @@ callers with an already rendered bundle can use
 `Bundle.publish bundle ~store_dir : Bundle.Publication.t Core.Or_error.t`.
 The example CLI defaults to `ROOT/_flow_results/bundles`; the installed
 provider separately defaults to the caller's cwd for run/operation storage.
-`Project.emit_bundle ~output_dir` and `Bundle.write` retain their explicit
+`Chip_target.emit_bundle ~output_dir` and `Bundle.write` retain their explicit
 new/empty-directory semantics.
 
 On local POSIX filesystems the backing layout is:
@@ -115,8 +115,8 @@ before use, and the archiver verifies and packages the underlying bundle files.
 
 ## Lower-level composition and provider examples
 
-`Project.elaborate` returns an abstract `Elaborated_project.t` containing the
-Hardcaml circuit, metadata, intent and resources. `Project.elaborate_for_flow`
+`Chip_target.elaborate` returns an abstract `Elaborated_project.t` containing the
+Hardcaml circuit, metadata, intent and resources. `Chip_target.elaborate_for_flow`
 performs implementation elaboration and `Resolved_flow.resolve`, producing
 validated concrete TT/LibreLane facts plus the `elaborated_project` field.
 `Bundle.render ~source_root ~input_paths resolved_flow` renders that result;
@@ -209,7 +209,7 @@ set_input_delay -min 0 -clock clk [get_ports {ena}]
 ...
 ```
 
-The clock and the per-port delays come from the project declaration; everything
+The clock and the per-port delays come from the chip target declaration; everything
 between them comes from the resolved target's constraint environment and is
 documented in [the target reference](../reference/target-reference.md). `set_load` is in the
 Liberty `capacitive_load_unit`, which is picofarads for sg13cmos5l, so the 6 fF

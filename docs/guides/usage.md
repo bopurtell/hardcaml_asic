@@ -45,9 +45,9 @@ exercises it. See [consumer installation](consumer-installation.md) for both
 routes, and the [consumer dependency workflow](../development/consumer-dependency-workflow.md)
 for developing a consumer against a local provider checkout.
 
-## 2. Declare the project
+## 2. Declare a chip target in the project
 
-A design implements `Project.Design`: Hardcaml `I`/`O` interfaces, a top module
+A design implements `Chip_target.Design`: Hardcaml `I`/`O` interfaces, a top module
 `name`, and `create : Elaboration.Context.t -> Signal.t I.t -> Signal.t O.t`.
 Resource constructors receive that context. The excerpt below is not a complete
 program. [`examples/tt_bundle_example.ml`](../../examples/tt_bundle_example.ml)
@@ -59,8 +59,8 @@ open Core
 open Hardcaml
 open Hardcaml_asic
 
-let project (design : (module Project.Design)) pinout ~source_inputs =
-  Project.create
+let chip_target (design : (module Chip_target.Design)) pinout ~source_inputs =
+  Chip_target.create
     ~name:"my_asic"
     ~metadata:
       { title = "My ASIC"
@@ -108,9 +108,9 @@ boundary, timing subset, protected settings and helper behavior.
 
 | Call | Returns | Use |
 | --- | --- | --- |
-| `Project.elaborate project ~mode:Simulation` | `Elaborated_project.t` | Behavioral resources for Hardcaml simulation |
-| `Project.elaborate project ~mode:Implementation` | `Elaborated_project.t` | Synthesizable implementations |
-| `Project.elaborate_for_flow project` | `Resolved_flow.t` | Implementation elaboration plus target, interface, timing and adapter validation |
+| `Chip_target.elaborate chip_target ~mode:Simulation` | `Elaborated_project.t` | Behavioral resources for Hardcaml simulation |
+| `Chip_target.elaborate chip_target ~mode:Implementation` | `Elaborated_project.t` | Synthesizable implementations |
+| `Chip_target.elaborate_for_flow chip_target` | `Resolved_flow.t` | Implementation elaboration plus target, interface, timing and adapter validation |
 
 An elaborated project is the circuit plus metadata, intent and resources, not a
 synthesis result. A resolved flow adds concrete TT/LibreLane facts and keeps the
@@ -145,16 +145,16 @@ dune exec examples/tt_bundle_example.exe -- memory "$BUNDLE"
 In a consumer:
 
 - **Declare every source input** that generation depends on, via
-  `Project.create ~source_inputs`. The default `[]` is fine for ordinary
+  `Chip_target.create ~source_inputs`. The default `[]` is fine for ordinary
   elaboration, but emission rejects it before constructing the design.
-- **Emit** with `Project.emit_bundle project ~source_root ~output_dir`, where
+- **Emit** with `Chip_target.emit_bundle chip_target ~source_root ~output_dir`, where
   `source_root` is the *consumer* repository, never the library checkout.
   Optional `?inputs` supplies target inputs. `~include_simulation:false` skips
   the separate simulation elaboration and reuses synthesis sources.
-- **Store-based emission:** `Project.emit_bundle_to_store` publishes, or reuses,
+- **Store-based emission:** `Chip_target.emit_bundle_to_store` publishes, or reuses,
   a verified immutable identity-addressed bundle instead of writing a directory.
 - **Project CLI:** a consumer typically wraps all this in a small CLI. The
-  example's `bin/project.exe describe|emit|preflight|run` emits into
+  example's `asics/fifo_demo/cli/chip.exe describe|emit|preflight|run` emits into
   `ROOT/_flow_results/bundles` by default.
 
 See the [bundle guide](bundle-emission.md), including its

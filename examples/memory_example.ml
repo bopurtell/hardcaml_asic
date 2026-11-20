@@ -43,7 +43,7 @@ end
 
 let make_project requirement =
   let policy = Resource_policy.create ~default:requirement [] |> Or_error.ok_exn in
-  Project.create
+  Chip_target.create
     ~name:"memory_example"
     ~metadata:
       { title = "Registered memory example"
@@ -89,7 +89,7 @@ let simulate elaborated_project =
 let run () =
   let project = make_project Flops in
   List.iter [ Elaboration.Mode.Simulation; Implementation ] ~f:(fun mode ->
-    let elaborated_project = Project.elaborate project ~mode |> Or_error.ok_exn in
+    let elaborated_project = Chip_target.elaborate project ~mode |> Or_error.ok_exn in
     let resource = List.hd_exn (Elaborated_project.resources elaborated_project) in
     printf
       "%s: %s, %s\n"
@@ -97,11 +97,11 @@ let run () =
       (Resource.Id.to_string resource.id)
       (Sexp.to_string (Resource.Selection.sexp_of_t resource.selection));
     simulate elaborated_project);
-  (match Project.elaborate (make_project Exact) ~mode:Implementation with
+  (match Chip_target.elaborate (make_project Exact) ~mode:Implementation with
    | Ok _ -> failwith "an unsupported macro-required request was accepted"
    | Error _ -> print_endline "macro-required request: rejected as expected");
   let fallback =
-    Project.elaborate (make_project Exact_or_flop_fallback) ~mode:Implementation
+    Chip_target.elaborate (make_project Exact_or_flop_fallback) ~mode:Implementation
     |> Or_error.ok_exn
   in
   let resource = List.hd_exn (Elaborated_project.resources fallback) in
@@ -113,7 +113,7 @@ let () =
   if Array.length argv = 3 && String.equal argv.(1) "--rtl"
   then (
     let elaborated_project =
-      Project.elaborate (make_project Flops) ~mode:Implementation |> Or_error.ok_exn
+      Chip_target.elaborate (make_project Flops) ~mode:Implementation |> Or_error.ok_exn
     in
     let rtl =
       Rtl.create Verilog [ Elaborated_project.circuit elaborated_project ]

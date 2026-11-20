@@ -1,6 +1,6 @@
 (** Hardcaml ASIC: portable resources, flow selection, platform templates and project
     elaboration. Groups depend on each other in one direction only: [Resource] and
-    [Flow], then [Platform], then [Elaboration], then the root modules ([Project],
+    [Flow], then [Platform], then [Elaboration], then the root modules ([Chip_target],
     [Methodology_plan], [Single_port_ram]). *)
 
 (** {1 Groups} *)
@@ -27,7 +27,7 @@ end
 (** {1 Consumer entry points} *)
 
 (** A single independently elaborated chip. [Project] is the compatible spelling. *)
-module Chip_target = Project
+module Chip_target = Chip_target
 module Project = Chip_target
 module Chip_catalog = Chip_catalog
 module Hardware_variant = Hardware_variant

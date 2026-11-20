@@ -18,9 +18,9 @@ The checked codec normalizes ordering and identity, rejects duplicates/unknown
 keys/types/limits, and bounds serialized input to128KiB. Integer domains are
 inclusive ranges; consumers still reject unsupported tuples or gaps in a range.
 
-Use `Project.of_variant ~variant ~create` to pass the same immutable assignment
+Use `Chip_target.of_variant ~variant ~create` to pass the same immutable assignment
 to the project factory and attach it to its result. The factory is called once;
-already-attached projects reject. Ordinary `Project.create` stays compatible.
+already-attached targets reject. Ordinary `Chip_target.create` stays compatible.
 
 ```ocaml
 let open Core.Or_error.Let_syntax in
@@ -30,13 +30,13 @@ let%bind parameter = H.Parameter.create ~key:"depth"
 let%bind schema = H.Schema.create ~design_id:"example_memory"
   ~schema_id:"example_memory.v1" ~parameters:[parameter] in
 let%bind variant = H.create ~schema ~assignments:["depth", Int 128] in
-Hardcaml_asic.Project.of_variant ~variant ~create:(fun checked ->
+Hardcaml_asic.Chip_target.of_variant ~variant ~create:(fun checked ->
   let%bind depth = H.get_int checked ~key:"depth" in
   if depth <> 128 && depth <> 256 then Core.Or_error.error_string "unsupported depth"
-  else make_project ~depth ())
+  else make_chip_target ~depth ())
 ```
 
-Here `make_project` is the consumer's normal project constructor. See the complete
+Here `make_chip_target` is the consumer's normal chip target constructor. See the complete
 reviewed adapter in
 [`variants/variant_memory.ml`](../../../hardcaml_asic_example/variants/variant_memory.ml).
 

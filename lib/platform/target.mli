@@ -5,9 +5,9 @@
    target that pair stands for.
 
    {v
-   Project.create ~target        declared pair; accepted as is, the pair is NOT checked
-   Project.elaborate             uses [technology] for resource selection only
-   Project.elaborate_for_flow    Elaboration.Resolved.resolve -> Target.resolve
+   Chip_target.create ~target        declared pair; accepted as is, the pair is NOT checked
+   Chip_target.elaborate             uses [technology] for resource selection only
+   Chip_target.elaborate_for_flow    Elaboration.Resolved.resolve -> Target.resolve
                                  -> unsupported pair or bad inputs: Error
                                  -> Resolved.t: geometry, floorplan, pins, layers, views
    Bundle                        writes the Resolved.t references into the manifest
@@ -15,7 +15,7 @@
 
    Resolution is deterministic: the same pair and inputs always give an equal
    {!Resolved.t}. Only Tiny Tapeout [T6x4] with {!Technology.ihp_sg13cmos5l} resolves;
-   every other pair is an error, even ones {!Project.elaborate} accepts.
+   every other pair is an error, even ones {!Chip_target.elaborate} accepts.
 
    A resolved target records references to external files by revision, relative path and
    (for the floorplan) hash. It does NOT open, fetch or hash any of them; checking them
@@ -27,7 +27,7 @@
 open! Core
 
 (** A declaration, NOT a resolved target: any harness can be paired with any technology
-    here. Use {!resolve}, or {!Project.elaborate_for_flow}, to find out whether the pair
+    here. Use {!resolve}, or {!Chip_target.elaborate_for_flow}, to find out whether the pair
     is supported. *)
 type t =
   { harness : Harness.t

@@ -34,8 +34,10 @@ def main():
         subprocess.run(["tar", "-x", "-C", str(baseline)], input=archive, check=True)
         # The current example: its source_inputs walk the live lib/ recursively,
         # so an older example would change the inventory for unrelated reasons.
-        # It names only top-level aliases, so it compiles against the flat tree.
         shutil.copytree(repo / "examples", baseline / "examples")
+        # The chip declaration was called Project at the frozen revision.
+        # Expose the renamed entry point to today's unmodified specimen.
+        (baseline / "lib/chip_target.ml").write_text("include Project\n")
         # Freeze the original Project/settings boundary, retaining the accumulated
         # pure domain slice and the rest of the provider as the build environment.
         for name in ("project.ml", "project.mli", "resolved_flow.ml", "resolved_flow.mli"):
@@ -50,7 +52,9 @@ def main():
         assert text.count("(name hardcaml_asic)") == 1
         dune.write_text(text.replace("(name hardcaml_asic)",
             "(name hardcaml_asic)\n (modules (:standard \\ methodology_plan))"))
-        subprocess.run(["dune", "build", "-j20", "--root", str(baseline),
+        # Older Timing.t has fewer fields; today's source is valid there, with
+        # a redundant-record-update warning. Use the release warning policy.
+        subprocess.run(["dune", "build", "--profile", "release", "-j20", "--root", str(baseline),
                         "examples/tt_bundle_example.exe"], cwd=baseline, check=True)
         subprocess.run(["python3", "-B", "test/check_resolved_flow_api.py",
                         "--baseline-emitter",

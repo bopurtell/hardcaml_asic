@@ -23,7 +23,7 @@ val hardware_variant : t -> Hardware_variant.t option
 
 (** Only accepts Project's inseparable checked render result, never an arbitrary
     resolution/bundle pair. Validates emitted configuration and manifest links. *)
-val of_rendered : Project.Rendered.t -> t Or_error.t
+val of_rendered : Chip_target.Rendered.t -> t Or_error.t
 
 type t_plan = t
 
@@ -48,6 +48,6 @@ val prepare
   -> ?expected_plan_identity:string
   -> catalog:Hardcaml_asic_flow_domain.Catalog.t
   -> endpoint:Flow.Stage.t
-  -> Project.t
+  -> Chip_target.t
   -> source_root:string
   -> Prepared.t Or_error.t

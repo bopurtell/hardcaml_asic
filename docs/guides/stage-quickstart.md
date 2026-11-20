@@ -30,7 +30,7 @@ After activating a contract-4 installation, from `hardcaml_asic_example`:
 
 ```sh
 . .dev/asic/current/activate.sh
-dune exec -j 20 bin/project.exe -- run --endpoint synthesis
+dune exec -j 20 asics/fifo_demo/cli/chip.exe -- run --endpoint synthesis
 ```
 
 Endpoints are `synthesis`, `floorplan`, `placement`, `cts`, `routing` and

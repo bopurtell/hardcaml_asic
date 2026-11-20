@@ -79,12 +79,12 @@ standard-cell views do not establish an SRAM macro.
 
 ## Validated TT/LibreLane flow
 
-`Project.elaborate_for_flow` elaborates an implementation and calls
+`Chip_target.elaborate_for_flow` elaborates an implementation and calls
 `Resolved_flow.resolve`. Its private result retains the abstract
 `Elaborated_project.t` in `elaborated_project`, alongside the resolved target,
 facts validated against the checked interface,
 clock and I/O delays in nanoseconds, clock frequency in hertz, and LibreLane
-settings with an owner for each value. `Project.elaborate` still supports
+settings with an owner for each value. `Chip_target.elaborate` still supports
 resource-only examples and behavioral simulation without requiring a supported
 physical target. Elaboration produces a circuit with metadata, intent and resources,
 without synthesis. `Resolved_flow.Setting.t` and `Resolved_flow.Delay_ns.t` are

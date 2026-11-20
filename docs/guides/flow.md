@@ -823,7 +823,7 @@ example, from the example checkout:
 ```sh
 source .dev/asic/current/activate.sh
 BUNDLE="$PWD/.dev/runtime-checks/bundle-NEW"   # must not exist
-dune exec -j 20 bin/project.exe -- emit --source-root "$PWD" --output-dir "$BUNDLE"
+dune exec -j 20 asics/fifo_demo/cli/chip.exe -- emit --source-root "$PWD" --output-dir "$BUNDLE"
 hardcaml-asic-flow preflight "$BUNDLE" --toolchain "$PWD/_flow_tools"
 ```
 

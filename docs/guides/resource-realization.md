@@ -45,7 +45,7 @@ the new format alongside explicit supported read/write schemas.
 New bundles contain an identity-covered `resource_snapshot` made from the same
 resolved implementation used to render the bundle. Historical manifests without
 it remain readable through an explicitly labeled legacy inventory adapter.
-`Project.prepare_resources` and `Methodology_plan.prepare` are different APIs:
+`Chip_target.prepare_resources` and `Methodology_plan.prepare` are different APIs:
 neither shared names nor similar inventories prove that a separately retained
 PT.4 attempt produced a bundle. `preparation_link` currently remains unavailable.
 

@@ -22,16 +22,16 @@ open! Hardcaml
 (** Prints every field except the circuit, which is summarised by its top module name. *)
 type t [@@deriving sexp_of]
 
-(** The name given to {!Project.create}. *)
+(** The name given to {!Chip_target.create}. *)
 val project_name : t -> string
 
 val metadata : t -> Metadata.t
 
-(** The mode passed to {!Project.elaborate}. *)
+(** The mode passed to {!Chip_target.elaborate}. *)
 val mode : t -> Mode.t
 
 (** The declared harness and technology selection. Use {!Resolved.resolve}
-    or {!Project.elaborate_for_flow} for a checked TT/LibreLane target. *)
+    or {!Chip_target.elaborate_for_flow} for a checked TT/LibreLane target. *)
 val target : t -> Platform.Target.t
 
 val flow : t -> Flow.Config.t
@@ -54,7 +54,7 @@ module Private : sig
   (** Project-owned propagation only; not a semantic-use attestation. *)
   val with_hardware_variant : t -> Hardware_variant.t option -> t
   val with_timing_stages : t -> (Platform.Timing.Stage.t * Signal.t) list -> t
-  (** Only {!Project.elaborate} should call this, after
+  (** Only {!Chip_target.elaborate} should call this, after
       {!Context.Private.finalize} succeeded. It performs no validation. *)
   val create
     :  project_name:string

@@ -31,7 +31,7 @@ the macro, register it first or use rules to select flops for its competitors.
 
 Unlisted macros have no limit. A zero limit permits no selections of that
 macro; negative limits, blank names and duplicate keys are errors at policy construction.
-`Project.create` rejects any limit whose name does not exactly match a macro in
+`Chip_target.create` rejects any limit whose name does not exactly match a macro in
 the target technology. A known macro may have a limit even if the design never uses it.
 Every elaboration starts with fresh counts, including simulation, where policy
 selection is still recorded although the memory uses its behavioral model.
@@ -42,7 +42,7 @@ distinction and [segmented SRAM](segmented-sram.md) for qualified configurations
 ## Consumer entry point
 
 Link the executable against `hardcaml_asic.execution` (and its ordinary project
-dependencies). Given the consumer's `make_project`, `source_root`, selected
+dependencies). Given the consumer's `make_chip_target`, `source_root`, selected
 `operation_store`, and `json` option:
 
 ```ocaml
@@ -62,8 +62,8 @@ let prepare ~operation_store ~source_root ~json =
       ~store:operation_store ~request ~json
       ~prepare:(fun ~on_phase ->
         (* Allocation has already been persisted and delivered here. *)
-        let project = make_project () in
-        Hardcaml_asic.Project.prepare_resources ~on_phase project ~source_root)
+        let chip_target = make_chip_target () in
+        Hardcaml_asic.Chip_target.prepare_resources ~on_phase chip_target ~source_root)
       () in
     Stdlib.exit (Option.value outcome.record.exit_code ~default:1)
   with exn ->
@@ -72,7 +72,7 @@ let prepare ~operation_store ~source_root ~json =
 ```
 
 Construct the project **inside** the closure, so constructor errors get durable
-attempt records. Pass `on_phase` to `Project.prepare_resources`. Caller-specific
+attempt records. Pass `on_phase` to `Chip_target.prepare_resources`. Caller-specific
 request fields are JSON metadata, not command or shell instructions.
 
 `run_cli` flushes an allocation event followed by a terminal event when `json` is

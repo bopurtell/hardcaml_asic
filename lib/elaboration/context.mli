@@ -3,7 +3,7 @@
 (* Module: "elaboration/context.mli" *)
 (* The temporary, mutable state of exactly one project elaboration.
 
-   {!Project.elaborate} creates a fresh context and passes it to the design constructor.
+    {!Chip_target.elaborate} creates a fresh context and passes it to the design constructor.
    Resource constructors register through it and receive their implementation selection.
 
    The context closes when elaboration finalizes OR fails; every operation on a closed

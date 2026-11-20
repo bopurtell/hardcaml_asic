@@ -296,7 +296,7 @@ let%expect_test "invalid declarations produce diagnostics before elaboration" =
   [%expect
     {|
     (Error (
-      ("invalid project declaration" (name fixture))
+      ("invalid chip target declaration" (name fixture))
       ("LibreLane overrides need an uppercase key, strict JSON value, and nonempty reason"
        (invalid ((
          (key    PL_TARGET_DENSITY_PCT)
