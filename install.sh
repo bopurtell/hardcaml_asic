@@ -45,8 +45,10 @@ names=(hardcaml_asic hardcaml-asic-flow)
 if "$global"; then
   flow=$(opam var bin)/hardcaml-asic-flow
   targets=${flow%/*}/hardcaml-asic-targets
+  starter=${flow%/*}/hardcaml-asic-starter
   for name in "${names[@]}"; do check_link "$flow" "$HOME/.local/bin/$name"; done
   check_link "$targets" "$HOME/.local/bin/hardcaml-asic-targets"
+  check_link "$starter" "$HOME/.local/bin/hardcaml-asic-starter"
   opam install -j4 --deps-only "$repo/hardcaml_asic.opam"
   # Regenerate the .install manifest even when the package version is
   # unchanged. opam --assume-built installs it (and records file ownership)
@@ -56,9 +58,11 @@ if "$global"; then
   opam install -j4 --assume-built "$repo/hardcaml_asic.opam"
   [[ -x $flow ]] || fail "opam did not install $flow"
   [[ -x $targets ]] || fail "opam did not install $targets"
+  [[ -x $starter ]] || fail "opam did not install $starter"
   mkdir -p -- "$HOME/.local/bin"
   for name in "${names[@]}"; do link "$flow" "$HOME/.local/bin/$name"; done
   link "$targets" "$HOME/.local/bin/hardcaml-asic-targets"
+  link "$starter" "$HOME/.local/bin/hardcaml-asic-starter"
   printf 'To select its commands: export PATH="$HOME/.local/bin:$PATH"\n'
 else
   [[ $prefix != / && $prefix != "$(realpath -- "$switch_prefix")" ]] ||

@@ -1,0 +1,68 @@
+open Core
+open Hardcaml_asic
+
+let checked = Or_error.ok_exn
+let print json = print_endline (Yojson.Safe.to_string json)
+
+let entry =
+  let methodology = Flow.Methodology.create ~id:"standard" ~label:"Standard"
+    ~description:"LibreLane physical-stage prefixes" ~backend_recipe:Librelane_classic_v1
+    ~endpoints:Flow.Stage.all ~configurable:[] ~defaults:[] |> checked in
+  let profile = Flow.Profile.create ~id:"balanced" ~label:"Balanced"
+    ~description:"Default register implementation" ~assignments:[] |> checked in
+  Flow.Catalog.Entry.create ~methodology ~profiles:[profile] ~default_profile:"balanced" |> checked
+
+let catalog = Flow.Catalog.create ~entries:[entry] ~default_flow:"standard"
+    ~default_profile:"balanced" |> checked
+
+let flow command args =
+  let values = String.Table.create () in
+  let keys = ["--chip"; "--variant"] @ (match command with
+    | "list" -> []
+    | "describe" -> ["--flow"]
+    | "plan" | "emit" -> ["--flow"; "--profile"; "--endpoint"; "--source-root"]
+      @ (if String.equal command "emit" then ["--results-root"; "--expected-plan-identity"] else [])
+    | _ -> failwith "Expected flow list, describe, plan or emit") in
+  let rec parse = function
+    | [] -> ()
+    | "--json" :: rest -> parse rest
+    | k :: v :: rest when List.mem keys k ~equal:String.equal && not (String.is_prefix v ~prefix:"--") ->
+      Hashtbl.add_exn values ~key:k ~data:v; parse rest
+    | _ -> failwith "Unknown or incomplete flow option"
+  in
+  parse args;
+  let get k = Hashtbl.find values k in
+  let require k v = Option.iter (get k) ~f:(fun s ->
+    if not (String.equal s v) then failwith ("Unknown selection: " ^ s)) in
+  require "--chip" Chip.target_id;
+  require "--variant" "default";
+  match command with
+  | "list" -> print (Flow_spec.list_to_yojson catalog)
+  | "describe" -> require "--flow" "standard"; print (Flow_spec.describe_to_yojson entry)
+  | _ ->
+    let selection = Flow.Selection.create ?flow:(get "--flow") ?profile:(get "--profile") () |> checked in
+    let endpoint = Hashtbl.find_exn values "--endpoint" |> Flow.Stage.of_string |> checked in
+    let request = Flow.Parameter.check_assignments ~configurable:[] [] |> checked in
+    let source_root = Option.value (get "--source-root") ~default:(Sys_unix.getcwd ()) in
+    let prepared = Methodology_plan.prepare ~catalog ~selection ~endpoint ~request ~catalog_inputs:[]
+      ?expected_plan_identity:(get "--expected-plan-identity") Chip.project ~source_root |> checked in
+    let plan = Methodology_plan.Prepared.plan prepared in
+    if String.equal command "plan" then print (Methodology_plan.to_yojson plan)
+    else (
+      let results = Option.value (get "--results-root") ~default:(Filename.concat source_root "_flow_results") in
+      let bundle = Methodology_plan.Prepared.bundle prepared in
+      let publication = Bundle.publish bundle ~store_dir:(Filename.concat results "bundles") |> checked in
+      print (`Assoc ["schema_version", `Int 1; "kind", `String "bundle_emission";
+        "bundle_identity", `String (Bundle.identity bundle); "plan_identity", `String (Methodology_plan.plan_identity plan);
+        "output_dir", `String publication.directory; "reused", `Bool publication.reused;
+        "plan", Methodology_plan.to_yojson plan]))
+
+let () =
+  match Array.to_list (Sys.get_argv ()) with
+  | [_; "chip"; "list"; "--json"] ->
+    let variant = `Assoc ["id", `String "default"; "label", `String "Default"] in
+    print (`Assoc ["schema_version", `Int 1; "default_chip", `String Chip.target_id;
+      "chips", `List [`Assoc ["id", `String Chip.target_id; "label", `String Chip.target_id;
+        "default_variant", `String "default"; "variants", `List [variant]]]])
+  | _ :: "flow" :: command :: args -> flow command args
+  | _ -> failwith "Expected chip list --json or flow list|describe|plan|emit"

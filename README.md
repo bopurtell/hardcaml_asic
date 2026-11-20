@@ -10,6 +10,8 @@ One opam package (`hardcaml_asic`, version 0.1.0) installs:
   resources (memory), target/constraint resolution and bundle emission;
 - **[`hardcaml-asic-targets`](docs/guides/chip-targets.md)**: list and invoke
   independent chip entry points in a Dune project;
+- **`hardcaml-asic-starter`**: render an editable Tiny Tapeout register project
+  for a caller such as Silver to preview and publish;
 - the **flow domain** `hardcaml_asic.flow_domain`: stages, operations, named
   methodologies, typed parameter profiles and the checked LibreLane mapping;
 - the **execution library** `hardcaml_asic.execution`: preflight, run, stage
@@ -108,6 +110,28 @@ Execution comes in three forms, all through `hardcaml-asic-flow`:
   identity and then run against that identity.
 
 ## Quick start
+
+### Render a starter (no build or EDA)
+
+After `./install.sh`, run `hardcaml-asic-starter render --name led-demo`.
+The name must match `[a-z][a-z0-9_-]{0,63}`. Hyphens become underscores in
+Dune and HDL identifiers. The command writes a deterministic JSON object to
+stdout with `schema_version: 1`, `provider: "hardcaml_asic"`, `version: "0.1.0"`
+and `files`, an array of relative `path` and UTF-8 `contents` strings. It takes
+no destination and creates no files. Invalid arguments give exit status 2 and
+a diagnostic on stderr. The caller chooses and checks the destination.
+
+The generated README explains how to edit the design, build with Dune, run
+its register/reset simulation, and print implementation RTL explicitly.
+For an existing Dune root, `hardcaml-asic-starter render-existing --name led-demo`
+uses the same descriptor format but places the design under `asic_led-demo/`.
+It supplies no `dune-project`. Its `project.exe` exposes chip discovery and
+the standard flow's `list`, `describe`, `plan` and `emit` commands. Silver
+previews and publishes the corresponding host-specific ASIC and preparation
+configuration and chip catalog registration. Build `asic_led-demo/project.exe`
+before discovery. Planning and bundle emission use Git HEAD for provenance.
+To verify the installed starter end to end from this checkout, run
+`STARTER_TEST_CHECKOUT_DIR="$PWD/_build" python3 starter/test_render.py "$(command -v hardcaml-asic-starter)" --consumer`.
 
 ### Library only (no PDK, no Docker)
 

@@ -1,0 +1,13 @@
+(executable
+ (name starter)
+ (public_name hardcaml-asic-starter)
+ (package hardcaml_asic)
+ (libraries yojson))
+
+(rule
+ (target project_template.ml)
+ (action (write-file %{target} "let contents = {|%{read:project.ml.in}|}")))
+
+(rule
+ (alias runtest)
+ (action (run python3 %{dep:test_render.py} %{exe:starter.exe})))
