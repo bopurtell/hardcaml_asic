@@ -14,7 +14,32 @@ sub-libraries only if it needs them. The generated
 [`hardcaml_asic.opam`](../../hardcaml_asic.opam) lists the OCaml dependencies.
 No registry publication is needed.
 
-## Source-checkout installer with progress
+## Install a checkout for your user
+
+See [Install the provider](../../README.md#install-the-provider). `./install.sh`
+builds the current working tree with Dune and passes its install manifest to
+opam (`install --assume-built`, local checkout pin). The selected switch owns the
+package; its consumers need no extra `OCAMLPATH`. Run the installer again after
+changing or updating the checkout, even if the package version is unchanged.
+Use `opam remove hardcaml_asic` to uninstall, `opam pin remove hardcaml_asic`
+to forget the checkout, and remove the two user-created launcher links.
+
+`~/.local/bin/{hardcaml_asic,hardcaml-asic-flow}` both link to the native
+`$(opam var bin)/hardcaml-asic-flow`; put `~/.local/bin` on `PATH`.
+The links keep pointing at that switch if you change switches. The installer
+refuses conflicting launchers; deliberately remove the old links to retarget.
+Use `./install.sh --print-prefix` to show the selected switch prefix.
+
+With `--prefix DIR`, prepend `DIR/bin` to `PATH` and `DIR/lib` to `OCAMLPATH`
+for side-by-side use. Neither the switch package nor the global launchers change.
+For an exact revision, install from a clean checkout of the full commit hash and
+record it separately: `--version --json` reports an unstamped source identity;
+the package version alone does not prove which revision was installed.
+
+`bash test/package_consumer_smoke.sh` tests a real isolated build and external
+consumer, plus opam install, upgrade and removal with a disposable fixture switch.
+
+## Source-checkout installer with progress for automation
 
 With the desired compiler switch and prerequisites already selected, a consumer
 can invoke the source checkout's installer:

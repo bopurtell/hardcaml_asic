@@ -19,6 +19,37 @@ One opam package (`hardcaml_asic`, version 0.1.0) installs:
 
 A consumer pins one revision and gets the library and CLI together.
 
+## Install the provider
+
+From a source checkout with a compatible OCaml switch and the package's build
+dependencies available:
+
+```sh
+./install.sh
+hardcaml_asic --version --json
+```
+
+The default installation makes the libraries available to projects in the
+selected opam switch and the CLI available on `PATH`. With compatible dependencies
+already installed, this builds the **ASIC package**, not the compiler or the
+switch's copy of Hardcaml. Use the second command from any directory to see
+which CLI contract the installed provider advertises. Installing the package
+is separate from provisioning the PDK,
+LibreLane and physical-flow tools (`./bootstrap.sh`).
+
+For an experimental checkout, install under a different prefix instead of
+replacing the normal installation:
+
+```sh
+./install.sh --prefix "$HOME/.local/opt/asic-dev"
+"$HOME/.local/opt/asic-dev/bin/hardcaml_asic" --version --json
+```
+
+Use the same compatible compiler switch for a provider and the hardware
+project that links its OCaml libraries. When testing a different release, pick
+its executable *and* libraries together; changing which CLI is on `PATH` does
+not by itself change the package Dune uses to compile a circuit.
+
 ## Supported scope
 
 The path is deliberately narrow:
