@@ -29,6 +29,7 @@ let describe () =
              (* Stable negotiation contract. This is implementation support, not
                 physical qualification or acceptance of a particular design. *)
              "sram_segmented1",`Bool true;
+             "sram_synthesis1",`Bool true;
              "sram_segmented1_scope",`Assoc [
                "schema_version",`Int 1;
                "profile",`String "stock256x16_r0_through_timing_v1";

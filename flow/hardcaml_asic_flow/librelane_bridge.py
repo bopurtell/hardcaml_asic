@@ -339,6 +339,8 @@ def macro_evidence(project, boundary, entries, *, publication=None):
     expected = 0 if boundary in ("synthesis", "floorplan") else 1
     if not isinstance(entries, list) or len(entries) != expected:
         raise ValueError("missing/duplicate transitive macro PDN evidence")
+    if not entries:
+        return entries
     plan = json.loads((project / "physical/macro-plan.json").read_text())
     for entry in entries:
         if (set(entry) != fields or entry["kind"] != "macro_power_geometry"
@@ -420,7 +422,11 @@ def execute(request):
     boundary = request["boundary"]
     validating = request["operation"] == "validate_publication"
     macro = validate_macro_bundle(project)
-    if macro:
+    synthesis_only = macro and json.loads((project / "manifest.json").read_text())["macro_contract"]["execution"] == "synthesis_only"
+    profile = "stock256x16_fresh_synthesis_v1" if synthesis_only else MACRO_PROFILE
+    if synthesis_only and (boundary != "synthesis" or request.get("checkpoint") is not None):
+        raise ValueError("synthesis-only SRAM supports only fresh synthesis")
+    if macro and not synthesis_only:
         macro_runtime(project, boundary)
     if not validating:
         candidate.mkdir()  # fresh output only, never read a stale success file
@@ -438,8 +444,10 @@ def execute(request):
             raise ValueError("publication config/input/collateral/runtime closure mismatch")
         if macro:
             published = json.loads((candidate / "manifest.json").read_text())
-            if published.get("schema_version") != 3 or published.get("macro_profile") != MACRO_PROFILE:
+            if published.get("schema_version") != 3 or published.get("macro_profile") != profile:
                 raise ValueError("macro publication requires checkpoint schema3 profile")
+            if synthesis_only and (published.get("restart_targets") != [] or published.get("restart_supported") is not False):
+                raise ValueError("synthesis-only SRAM cannot continue from its checkpoint")
             macro_evidence(project, boundary, published["macro_evidence"],
                            publication=(candidate, published["location"]))
         return  # no Flow.start; validation cannot produce readiness or artifacts
@@ -499,7 +507,7 @@ def execute(request):
               "gate_evidence": "configured Classic gates; returned_steps are successful outer step objects, not body/skip provenance",
                "acceptance": "not_evaluated"}
     if macro:
-        report.update(macro_profile=MACRO_PROFILE, macro_evidence=evidence)
+        report.update(macro_profile=profile, macro_evidence=evidence)
     (candidate / "segment.json").write_text(json.dumps(report, allow_nan=False, indent=2) + "\n")
 
 

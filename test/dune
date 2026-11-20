@@ -301,6 +301,7 @@
    --plan-inspect %{exe:../bin/experimental_plan_inspect.exe}
    --inspector %{exe:../bin/experimental_checkpoint_inspect.exe}
    --finalizer %{exe:../bin/experimental_finalization.exe}
+   --reporter %{exe:../bin/experimental_report.exe}
    --resources ../flow/hardcaml_asic_flow)))
 
 (executable

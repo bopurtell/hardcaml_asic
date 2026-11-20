@@ -48,7 +48,7 @@ end
 
 let id = Resource.Id.of_string_exn
 let intent name x = Macro_intent.tt_cmos5l_r0 ~resource:(id name) ~x_um:x ~y_um:81. ()
-let project ?(single = false) ?(linked = false) ?(operation = Flow.Operation.Synthesis) ?(macros = [intent "left" 42.; intent "right" 400.]) ?(overrides = []) () =
+let project ?source_inputs ?(single = false) ?(linked = false) ?(operation = Flow.Operation.Synthesis) ?(macros = [intent "left" 42.; intent "right" 400.]) ?(overrides = []) () =
   Project.create ~name:"sram_bundle_fixture"
     ~metadata:{ title="Public SRAM"; author="test"; description="Exact production resource bundle" }
     ~design:(if linked then (module Linked_single_design : Project.Design)
@@ -61,7 +61,7 @@ let project ?(single = false) ?(linked = false) ?(operation = Flow.Operation.Syn
         ~source:(Timing.Port.input "ena") ~first_stage] () else Timing.create ())
     ~pinout:(List.concat_map [Pinout.Bank.Ui; Uo; Uio] ~f:(fun bank ->
       List.init 8 ~f:(fun bit -> {Pinout.bank; bit; description="fixture"})))
-    ~source_inputs:(if single then ["test/sram_bundle/sram_bundle_consumer.ml"] else ["generator.ml"])
+    ~source_inputs:(Option.value source_inputs ~default:(if single then ["test/sram_bundle/sram_bundle_consumer.ml"] else ["generator.ml"]))
     ~policy:(Resource_policy.create ~default:Exact [] |> ok_exn) ()
 ;;
 
@@ -103,6 +103,11 @@ let check_resolution () =
 
 let () =
   match Sys.get_argv () with
+   | [|_; "emit-dual-synthesis"; root; output|] ->
+     let p = project ~source_inputs:["test/sram_bundle/sram_bundle_consumer.ml"] ~macros:[] () |> ok_exn in
+     let inputs = { Target.Inputs.reference_cmos5l_6x4 with
+       floorplan_sha256 = Flow.Plan_json.sha256 "floorplan fixture" } in
+     Project.emit_bundle ~inputs p ~source_root:root ~output_dir:output |> ok_exn |> ignore
    | [|_; ("emit-single-physical" | "emit-single-synthesis" | "emit-single-linked" as mode); root; output|] ->
      let physical = not (String.equal mode "emit-single-synthesis") in
      let p = project ~single:true ~linked:(String.equal mode "emit-single-linked") ~macros:[intent "program" 40.]

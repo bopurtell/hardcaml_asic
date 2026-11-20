@@ -10,9 +10,11 @@ let ok = function Ok j -> j | Error e -> failwith e
 let bad label = function Error _ -> check label true | Ok _ -> check label false
 let save p s = let c=open_out_bin p in Fun.protect ~finally:(fun () -> close_out_noerr c) (fun () -> output_string c s)
 let root () = let p=Filename.temp_file "resource-inspection-" "" in Sys.remove p; Unix.mkdir p 0o700;p
-let manifest root resources files =
+let manifest ?snapshot root resources files =
   let payload=`Assoc ["project",`String "fixture";"top_module",`String "top";
     "resources",`List resources;"files",`List files] in
+  let payload=match payload,snapshot with
+    | `Assoc fields,Some j -> `Assoc (("resource_snapshot",j)::fields) | _ -> payload in
   let id=hash (Yojson.Safe.to_string payload) in
   let manifest=match payload with `Assoc xs -> `Assoc (xs@["identity",`String id]) | _ -> assert false in
   let raw=Yojson.Safe.to_string manifest in save (root^"/manifest.json") raw;id,raw
@@ -26,11 +28,38 @@ let () =
   let files=List.init 80 (fun i -> let path=Printf.sprintf "member-%03d" i in
     let raw="member "^string_of_int i in save (r^"/"^path) raw;
     `Assoc ["path",`String path;"sha256",`String (hash raw)]) in
-  let _,_=manifest r [flops;fallback] files in
+  let exhausted=legacy "limited" "Exact_or_flop_fallback"
+    "((implementation Flops) (reason (Budget_exhausted (macro MAC) (limit 0))))" in
+  let _,_=manifest r [flops;fallback;exhausted] files in
   let run ?query ?resource_id ?section ?expected_digest ?artifact_id ?offset ?limit () =
     Resource_inspection_service.run ~kind:"bundle" ~target:r ?query ?resource_id ?section ?expected_digest ?artifact_id ?offset ?limit () in
   let index=ok (run ()) in
-  check "bundle inventory" (List.length (xs (get index "rows"))=2);
+  check "bundle inventory" (List.length (xs (get index "rows"))=3);
+  check "budget reason includes macro and limit" (get (List.nth (xs (get index "rows")) 2) "reason"
+    = `String "budget_exhausted (macro=MAC, limit=0)");
+  let structured=root () in
+  let atom s=`Assoc ["atom",`String s] and seq xs=`Assoc ["list",`List xs] in
+  let kind name=`Assoc ["kind",`String name] and status name=`Assoc ["status",`String name] in
+  let record=`Assoc ["id",`Assoc ["display",`String "limited";"path",`List [];"name",`String "limited"];
+    "request",`Assoc ["kind",`String "ram";"contract",seq [seq [atom "width";atom "16"];seq [atom "depth";atom "256"]]];
+    "requirement",`String "exact_or_flop_fallback";"policy",kind "default";
+    "selection",`Assoc ["implementation",kind "flops";"reason",`Assoc ["kind",`String "budget_exhausted";"macro",`String "MAC";"limit",`Int 0]];
+    "elaborated_as",`String "selected_implementation";"sources",`List [kind "generated_synthesis_rtl"];
+    "actual_instances",status "not_applicable";"collateral",`List [];"physical_intent",status "unavailable"] in
+  let snapshot=`Assoc ["schema_version",`Int 1;"mode",`String "implementation";"scope",`String "resolved";
+    "project",`String "fixture";"top",`String "top";"resources",`List [record]] in
+  let legacy_record=match exhausted with `Assoc fields ->
+    `Assoc (("source_roles",`List [`String "Generated_synthesis_rtl"])::fields) | _ -> assert false in
+  let _,_=manifest ~snapshot structured [legacy_record] [] in
+  let structured_index=ok (Resource_inspection_service.inspect (Bundle structured) ()) in
+  check "structured and legacy inspection explain the same budget" (get (List.hd (xs (get structured_index "rows"))) "reason"
+    = get (List.nth (xs (get index "rows")) 2) "reason");
+  List.iter (fun (req,details) ->
+    let legacy_record=legacy "limited" req ("((implementation Flops) (reason (Budget_exhausted "^details^")))") in
+    let _,_=manifest structured [legacy_record] [] in
+    bad "inconsistent legacy budget" (Resource_inspection_service.inspect (Bundle structured) ()))
+    ["Exact","(macro MAC) (limit 0)"; "Exact_or_flop_fallback","(macro MAC) (limit 1)";
+     "Exact_or_flop_fallback","(macro MAC) (limit -1)"; "Exact_or_flop_fallback","(limit 0) (limit 0)"];
   check "bundle availability explicit" (get index "inventory_status"=`String "available" && get index "inventory_reason"=`Null);
   check "explicit versus fallback reason" (get (List.hd (xs (get index "rows"))) "reason"<>get (List.nth (xs (get index "rows")) 1) "reason");
   check "inventory never realized" (get (List.hd (xs (get index "rows"))) "final"=`String "unavailable");

@@ -101,7 +101,8 @@ let decode raw =
   if schema = Schema_1 && not (List.mem boundary [Stage.Synthesis; Stage.Floorplan; Stage.Placement])
   then fail "invalid boundary capability";
   let restart_targets =
-    if schema = Schema_2
+    if schema = Schema_3 && get raw "macro_profile" = str Macro_contract.synthesis_profile then []
+    else if schema = Schema_2
        && boundary = Stage.Routing
        && get raw "restart_targets" = J.array [ str "signoff" ]
     then [ Stage.Signoff ]
@@ -115,7 +116,7 @@ let decode raw =
       || get raw "closure_scope" <> str "path_bound") then fail "invalid tested restart/closure capability";
    let files = inventory (get raw "files") and external_files = inventory (get raw "external") in
    if schema=Schema_3 then (
-     if get raw "macro_profile" <> str Macro_contract.segmented_profile then fail "unsupported macro checkpoint profile";
+     if not (Macro_contract.valid_profile (string (get raw "macro_profile")) boundary) then fail "unsupported macro checkpoint profile";
      let entries=match macro_evidence ~boundary (get raw "macro_evidence") with Ok xs -> xs | Error e -> fail e in
      List.iter (fun e ->
        let p=path_string (get e "path") in

@@ -74,11 +74,12 @@ let reference raw =
   let boundary = match List.find_opt (fun s -> Stage.to_string s = name) Stage.all with Some s -> s | None -> fail "invalid boundary" in
   let identity=string (get raw "identity") in
   require (hex 64 identity) "invalid artifact identity";
-  let capability = get (Execution_plan.capabilities ()) name in
-  List.iter (fun k -> require (equal (get raw k) (get capability k)
-    || (name="routing" && k="restart_targets" && get raw k=J.array [str "signoff"]))
-    "invalid checkpoint capability") ["restart_supported";"restart_targets";"tested_image_id";"closure_scope";"acceptance"];
-  {boundary; identity; path=path (get raw "path"); raw}
+  let path = path (get raw "path") in
+  let reference = match Runner.reference ~boundary ~path ~identity with Ok r -> r | Error e -> fail e in
+  require (Runner.reference_matches ~equal ~legacy_routing:false reference raw
+    || (boundary=Stage.Routing && Runner.reference_matches ~equal ~legacy_routing:true reference raw))
+    "invalid checkpoint capability";
+  {boundary; identity; path; raw}
 let decode_event ~name data = match name with
   | "allocated" ->
     exact data ["request";"workspace";"checkpoint_store";"lock_path";"preflight_record"];

@@ -45,6 +45,77 @@ let rule selector requirement = { Resource_policy.Rule.selector; requirement }
 let instance = Resource_policy.Selector.instance_exn
 let subtree = Resource_policy.Selector.subtree_exn
 
+let%test_unit "project declaration checks budget names against technology, not design" =
+  let stock = "RM_IHPSG13_1P_256x16_c2_bm_bist" in
+  let declare name =
+    let policy = Resource_policy.create ~default:Flops ~macro_limits:[ name, 0 ] [] |> ok_exn in
+    Fixture.project ~technology:Technology.ihp_sg13cmos5l ~policy ()
+  in
+  (* The fixture uses no stock SRAM. *)
+  let project = declare stock |> ok_exn in
+  ignore (Project.elaborate project ~mode:Implementation |> ok_exn : Elaborated_project.t);
+  let typo = stock ^ "_typo" in
+  match declare typo with
+  | Ok _ -> failwith "project declaration accepted an unknown macro"
+  | Error err ->
+    let message = Error.to_string_hum err in
+    List.iter [ typo; Technology.ihp_sg13cmos5l.name ] ~f:(fun substring ->
+      assert (String.is_substring message ~substring))
+;;
+
+let%expect_test "macro slots go to eligible registrations in construction order" =
+  let policy =
+    Resource_policy.create
+      ~macro_limits:[ fixture_macro.name, 1 ]
+      ~default:Exact_or_flop_fallback
+      [ rule (instance "status") Flops ]
+    |> ok_exn
+  in
+  let project =
+    Fixture.project
+      ~policy
+      ~technology:technology_with_width_8_mapping
+      ~design:(Fixture.design ~order:`Reverse ())
+      ()
+    |> ok_exn
+  in
+  List.iter [ Elaboration.Mode.Simulation; Implementation ] ~f:(fun mode ->
+    let project = Project.elaborate project ~mode |> ok_exn in
+    List.iter (Elaborated_project.resources project) ~f:(fun r ->
+      print_s [%sexp (r.id : Resource.Id.t), (r.selection.reason : Resource.Selection.Reason.t)]));
+  [%expect {|
+    (left/buf (
+      Budget_exhausted
+      (macro fixture_macro_8)
+      (limit 1)))
+    (right/buf (Exact_mapping (technology fixture-tech)))
+    (status Explicit_flops)
+    (left/buf (
+      Budget_exhausted
+      (macro fixture_macro_8)
+      (limit 1)))
+    (right/buf (Exact_mapping (technology fixture-tech)))
+    (status Explicit_flops)
+    |}]
+;;
+
+let%expect_test "exact registration fails even with a mapping when its limit is zero" =
+  show
+    ~technology:technology_with_width_8_mapping
+    (Resource_policy.create ~macro_limits:[ fixture_macro.name, 0 ] ~default:Exact []);
+  [%expect {|
+    (("design construction failed"
+       (project fixture)
+       (mode    Implementation))
+     (("resource selection failed"
+        (instance left/buf)
+        (request ((kind fixture_store) (contract ((width 8))))))
+      ("macro instance budget exhausted, and flop fallback is not permitted"
+       (macro fixture_macro_8)
+       (limit 0))))
+    |}]
+;;
+
 let%expect_test "exact mapping is selected and carries its collateral" =
   let elaborated_project =
     elaborate

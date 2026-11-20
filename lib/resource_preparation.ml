@@ -54,6 +54,34 @@ let verify_hash j key domain payload =
   if not (String.equal (J.digest (J.get j key)) (J.hash domain payload))
   then J.fail (key ^ " mismatch")
 ;;
+(* A snapshot can verify exhaustion against selected macros. Preparation also
+   carries the declared caps, so a rehashed explanation must agree with them. *)
+let check_macro_limits declaration resources =
+  let field key = function
+    | Sexp.List xs ->
+      (match List.filter_map xs ~f:(function
+         | Sexp.List [Atom k; value] when String.equal k key -> Some value | _ -> None) with
+       | [] -> None | [v] -> Some v | _ -> J.fail ("duplicate declaration field: " ^ key))
+    | _ -> None in
+  let limits = field "project" declaration
+    |> Option.bind ~f:(field "policy")
+    |> Option.bind ~f:(field "macro_limits")
+    |> Option.value_map ~default:[] ~f:[%of_sexp: (string * int) list]
+    |> Map.of_alist_exn (module String) in
+  Map.iteri limits ~f:(fun ~key ~data ->
+    if String.is_empty (String.strip key) || data < 0 then J.fail "invalid declaration macro limit");
+  let counts = String.Table.create () in
+  List.iter (Elaboration.Resource_snapshot.records resources) ~f:(fun r ->
+    match r.selection.implementation, r.selection.reason with
+    | Macro name, _ ->
+      Hashtbl.incr counts name;
+      Option.iter (Map.find limits name) ~f:(fun limit ->
+        if Hashtbl.find_exn counts name > limit then J.fail "selected macro exceeds declared limit")
+    | Flops, Budget_exhausted {macro;limit} ->
+      if not (Option.equal Int.equal (Some limit) (Map.find limits macro))
+      then J.fail "exhausted limit differs from declaration"
+    | Flops, _ -> ())
+;;
 let of_json = J.checked (fun j ->
   J.exact j ["schema_version"; "kind"; "identity"; "source_identity";
     "configuration_identity"; "circuit_identity"; "source"; "configuration";
@@ -67,7 +95,7 @@ let of_json = J.checked (fun j ->
   J.exact config ["schema_version"; "operation"; "declaration"; "inputs"; "methodology"; "resolved_settings"];
   J.expect (J.get config "schema_version") (`Int 1);
   J.expect (J.get config "operation") (J.str "elaborate_resolve_resources");
-  ignore (J.read_sexp (J.get config "declaration") : Sexp.t);
+  let declaration = J.read_sexp (J.get config "declaration") in
   ignore (J.read_sexp (J.get config "inputs") : Sexp.t);
   (match J.get config "methodology" with
    | `Null -> ()
@@ -83,6 +111,7 @@ let of_json = J.checked (fun j ->
   if String.is_empty (J.string (J.get circuit "rtl")) then J.fail "empty circuit RTL";
   verify_hash j "circuit_identity" "circuit" circuit;
   let resources = Elaboration.Resource_snapshot.of_json (J.get j "resources") |> Or_error.ok_exn in
+  check_macro_limits declaration resources;
   J.expect (J.get (Elaboration.Resource_snapshot.to_json resources) "mode") (J.str "implementation");
   J.expect (J.get (Elaboration.Resource_snapshot.to_json resources) "scope") (J.str "resolved");
   verify_hash j "identity" "preparation" (without_identity j);

@@ -2,3 +2,9 @@
  (name check)
  (libraries hardcaml_asic.execution yojson unix)
  (action (run %{test} %{exe:../../bin/experimental_resource_inspect.exe})))
+
+(rule
+ (alias runtest)
+ (action (run python3 -B %{dep:check_named_synthesis.py}
+   %{exe:../../bin/experimental_resource_inspect.exe}
+   %{exe:../resource_realization_bundle/bundle_tests.exe})))

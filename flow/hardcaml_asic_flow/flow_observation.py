@@ -210,9 +210,13 @@ def reduce_event(state, event, data, stream):
                         and Path(artifact["path"]).is_absolute() and type(artifact["restart_supported"]) is bool
                         and not any(a["boundary"] == artifact["boundary"] for a in state["artifacts"]), "invalid artifact")
                 capability = boundary_capabilities()[artifact["boundary"]]
-                require(all(artifact[k] == capability[k] or
-                    (artifact["boundary"] == "routing" and k == "restart_targets" and artifact[k] == ["signoff"])
-                    for k in ("restart_supported", "restart_targets", "tested_image_id", "closure_scope", "acceptance")), "invalid checkpoint capability")
+                targets = [capability["restart_targets"]]
+                targets += {"synthesis": [[], ["floorplan"]], "timing": [[]],
+                            "routing": [["signoff"]]}.get(artifact["boundary"], [])
+                require(artifact["restart_targets"] in targets
+                        and artifact["restart_supported"] == bool(artifact["restart_targets"])
+                        and all(artifact[k] == capability[k] for k in
+                                ("tested_image_id", "closure_scope", "acceptance")), "invalid checkpoint capability")
                 state["artifacts"].append(deepcopy(artifact))
             else:
                 require(occurrence["status"] in ("completed", "failed", "interrupted")

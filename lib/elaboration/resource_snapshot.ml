@@ -18,7 +18,9 @@ let selection (s : Resource.Selection.t) =
   let reason = match s.reason with
     | Explicit_flops -> J.obj ["kind", J.str "explicit_flops"]
     | Exact_mapping { technology } -> J.obj ["kind", J.str "exact_mapping"; "technology", J.str technology]
-    | Flop_fallback { no_exact_mapping_in } -> J.obj ["kind", J.str "flop_fallback"; "technology", J.str no_exact_mapping_in] in
+    | Flop_fallback { no_exact_mapping_in } -> J.obj ["kind", J.str "flop_fallback"; "technology", J.str no_exact_mapping_in]
+    | Budget_exhausted { macro; limit } ->
+      J.obj ["kind", J.str "budget_exhausted"; "macro", J.str macro; "limit", `Int limit] in
   J.obj ["implementation", implementation; "reason", reason]
 ;;
 let collateral (c : Resource.Technology.Collateral.t) =
@@ -99,6 +101,14 @@ let number = function
   | `Int i -> Float.of_int i
   | _ -> J.fail "expected finite number"
 ;;
+let budget reason =
+  J.exact reason ["kind"; "macro"; "limit"];
+  let macro = J.string (J.get reason "macro") in
+  if String.is_empty (String.strip macro) then J.fail "blank budget macro";
+  match J.get reason "limit" with
+  | `Int limit when limit >= 0 -> macro, limit
+  | _ -> J.fail "invalid macro instance limit"
+;;
 let of_json = J.checked (fun j ->
   J.exact j ["schema_version"; "project"; "top"; "mode"; "scope"; "resources"];
   J.expect (J.get j "schema_version") (`Int 1);
@@ -107,6 +117,7 @@ let of_json = J.checked (fun j ->
   let mode = J.enum (J.get j "mode") ["simulation"; "implementation"] in
   let scope = J.enum (J.get j "scope") ["elaborated"; "resolved"] in
   if String.equal scope "resolved" && not (String.equal mode "implementation") then J.fail "resolved simulation";
+  let counts = String.Table.create () and exhausted = ref [] in
   let ids = J.list (J.get j "resources") |> List.map ~f:(fun r ->
     J.exact r ["id"; "request"; "requirement"; "policy"; "selection"; "elaborated_as";
                "sources"; "actual_instances"; "collateral"; "physical_intent"];
@@ -135,15 +146,17 @@ let of_json = J.checked (fun j ->
     let impl = J.get sel "implementation" in
     let impl_kind = J.enum (J.get impl "kind") ["flops"; "macro"] in
     (if String.equal impl_kind "macro" then (J.exact impl ["kind"; "name"];
-       ignore (J.string (J.get impl "name") : string)) else J.exact impl ["kind"]);
+        Hashtbl.incr counts (J.string (J.get impl "name"))) else J.exact impl ["kind"]);
     let reason = J.get sel "reason" in
-    let why = J.enum (J.get reason "kind") ["explicit_flops"; "exact_mapping"; "flop_fallback"] in
-    (if String.equal why "explicit_flops" then J.exact reason ["kind"]
-     else (J.exact reason ["kind"; "technology"]; ignore (J.string (J.get reason "technology") : string)));
+     let why = J.enum (J.get reason "kind") ["explicit_flops"; "exact_mapping"; "flop_fallback"; "budget_exhausted"] in
+     (match why with
+      | "explicit_flops" -> J.exact reason ["kind"]
+      | "budget_exhausted" -> exhausted := budget reason :: !exhausted
+      | _ -> J.exact reason ["kind"; "technology"]; ignore (J.string (J.get reason "technology") : string));
     let valid_selection = match req, impl_kind, why with
       | "flops", "flops", "explicit_flops"
       | ("exact" | "exact_or_flop_fallback"), "macro", "exact_mapping"
-      | "exact_or_flop_fallback", "flops", "flop_fallback" -> true | _ -> false in
+       | "exact_or_flop_fallback", "flops", ("flop_fallback" | "budget_exhausted") -> true | _ -> false in
     if not valid_selection then J.fail "inconsistent selection";
     let role = J.enum (J.get r "elaborated_as") ["behavioral_model"; "selected_implementation"] in
     if not (Bool.equal (String.equal mode "simulation") (String.equal role "behavioral_model")) then J.fail "inconsistent elaboration role";
@@ -190,7 +203,9 @@ let of_json = J.checked (fun j ->
        J.exact supplies ["VDD!"; "VDDARRAY!"; "VSS!"];
        List.iter ["VDD!", "VPWR"; "VDDARRAY!", "VPWR"; "VSS!", "VGND"] ~f:(fun (k,v) -> J.expect (J.get supplies k) (J.str v)));
     resource_id) in
-  if not (List.equal Resource.Id.equal ids (List.dedup_and_sort ids ~compare:Resource.Id.compare)) then J.fail "resource IDs must be unique and sorted";
+   List.iter !exhausted ~f:(fun (macro, limit) ->
+     if Option.value (Hashtbl.find counts macro) ~default:0 <> limit then J.fail "macro count disagrees with exhausted budget");
+   if not (List.equal Resource.Id.equal ids (List.dedup_and_sort ids ~compare:Resource.Id.compare)) then J.fail "resource IDs must be unique and sorted";
   j)
 
 let records t =
@@ -234,7 +249,8 @@ let records t =
     let reason : Resource.Selection.Reason.t = match J.string (J.get why "kind") with
       | "explicit_flops" -> Explicit_flops
       | "exact_mapping" -> Exact_mapping { technology = J.string (J.get why "technology") }
-      | "flop_fallback" -> Flop_fallback { no_exact_mapping_in = J.string (J.get why "technology") }
+       | "flop_fallback" -> Flop_fallback { no_exact_mapping_in = J.string (J.get why "technology") }
+       | "budget_exhausted" -> let macro, limit = budget why in Budget_exhausted { macro; limit }
       | _ -> assert false in
     let elaborated_as : Resource.Record.Elaborated_as.t = match J.string (J.get r "elaborated_as") with
       | "behavioral_model" -> Behavioral_model | "selected_implementation" -> Selected_implementation

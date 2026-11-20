@@ -77,7 +77,9 @@ let publish ?(name=random_name) ?validate_runtime ?before_promote ~candidate ~st
      let report = codec (J.parse (read (source "segment.json"))) in
      let macro = match report with J.Object xs -> List.mem_assoc "macro_profile" xs | _ -> false in
      let macro_entries = if not macro then [] else (
-       if get report "macro_profile" <> str Macro_contract.segmented_profile then fail "unsupported macro publication profile";
+       (match get report "macro_profile" with
+        | J.String p when Macro_contract.valid_profile p boundary -> ()
+        | _ -> fail "unsupported macro publication profile");
        checked (Checkpoint.macro_evidence ~boundary (get report "macro_evidence"))) in
     if get report "status" <> str "completed" || get report "boundary" <> str (Stage.to_string boundary)
        || get report "bridge_sha256" <> get compatibility "bridge_sha256" then fail "inconsistent outer segment completion";
@@ -118,7 +120,8 @@ let publish ?(name=random_name) ?validate_runtime ?before_promote ~candidate ~st
       ["state.json"; "resolved.json"; "closure.json"; "segment.json"];
     let external_files = codec (J.parse (read (Filename.concat staging "closure.json"))) in
     let capability = Stage.capability boundary in
-     let restart_targets=if not macro then capability.restart_targets else
+      let restart_targets=if not macro then capability.restart_targets
+        else if get report "macro_profile" = str Macro_contract.synthesis_profile then [] else
        match boundary with Stage.Synthesis -> [Stage.Floorplan] | Stage.Timing -> [] | _ -> capability.restart_targets in
      let unsigned = obj (["schema_version", codec (J.integer (if macro then "3" else "2")); "location", str location;
        "boundary", str (Stage.to_string boundary); "restart_supported", J.bool (restart_targets <> []);
@@ -127,7 +130,7 @@ let publish ?(name=random_name) ?validate_runtime ?before_promote ~candidate ~st
       "compatibility", compatibility; "files", obj (List.map (fun (n,(r:Checkpoint.file_record)) ->
         n, obj ["sha256", str r.sha256; "bytes", codec (J.integer r.bytes)]) !files);
        "external", external_files; "metrics", get report "metrics"; "acceptance", str "not_evaluated"] @
-       if macro then ["macro_profile",str Macro_contract.segmented_profile;"macro_evidence",J.array macro_entries] else []) in
+        if macro then ["macro_profile",get report "macro_profile";"macro_evidence",J.array macro_entries] else []) in
     let manifest = match unsigned with J.Object xs -> obj (("identity", str (J.identity unsigned)) :: xs) | _ -> assert false in
     write (Filename.concat staging "manifest.json") (J.canonical manifest ^ "\n");
     let validate () =

@@ -31,6 +31,7 @@ resources: [                         # unique IDs, sorted by Resource.Id.compare
     reason: {kind: "explicit_flops"}
           | {kind: "exact_mapping", technology: string}
           | {kind: "flop_fallback", technology: string}
+          | {kind: "budget_exhausted", macro: string, limit: nonnegative integer}
   elaborated_as: "selected_implementation"
   sources: [{kind: "generated_synthesis_rtl"}
           | {kind: "collateral", collateral: collateral}]

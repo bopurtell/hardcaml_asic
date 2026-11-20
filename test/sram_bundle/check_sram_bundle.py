@@ -449,8 +449,7 @@ def unused_pinned_cmos5l_invocation(gds):
             path.unlink()
         else:
             path.write_bytes(content)
-    # Execute the real bounded admission helper too: schema1 remains coarse-only,
-    # while schema2's supported segmented path has its own integration corpus.
+    # A schema1 synthesis bundle cannot continue into a physical stage.
     execute = [n for n in ast.parse(bridge.read_text()).body if isinstance(n, ast.FunctionDef)
                and n.name in ("execute", "macro_runtime")]
     exec(compile(ast.Module(body=execute, type_ignores=[]), str(bridge), "exec"), ns)
@@ -464,11 +463,11 @@ def unused_pinned_cmos5l_invocation(gds):
                                  "librelane.common": types.SimpleNamespace(set_tpe=set_tpe)}):
         try:
             ns["execute"]({"project":str(bundle), "pdk_root":str(pdk), "candidate":str(candidate),
-                           "boundary":"synthesis", "operation":"execute_segment", "checkpoint":None})
+                           "boundary":"floorplan", "operation":"execute_segment", "checkpoint":None})
         except ValueError as e:
-            assert "schema2 Hardening" in str(e) and "schema1 physical continuation is unsupported" in str(e)
+            assert "supports only fresh synthesis" in str(e)
         else:
-            raise AssertionError("schema1 SRAM checkpoint capability must not be minted")
+            raise AssertionError("schema1 SRAM physical execution must not be admitted")
     assert executor_budgets == [6]
     assert not candidate.exists()
     liberty.write_text("synthetic macro collateral")

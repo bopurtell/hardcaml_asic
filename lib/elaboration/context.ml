@@ -37,6 +37,7 @@ type shared =
   ; database        : Circuit_database.t
   ; mutable state   : State.t
   ; mutable records : Resource.Record.t Map.M(Resource.Id).t
+  ; mutable macro_counts : int Map.M(String).t
   ; mutable timing_stages : (Platform.Timing.Stage.t * Signal.t) list
   }
 
@@ -181,7 +182,13 @@ let register_open_exn
     let%bind.Or_error requirement, applied = Resource.Policy.lookup policy id in
 
     (* Wraps in Ok if it passes; *)
-    let%map.Or_error selection = Resource.Selection.select ~technology ~requirement request in
+    let exhausted_limit macro =
+      Option.filter (Resource.Policy.macro_limit policy macro) ~f:(fun limit ->
+        Option.value (Map.find t.shared.macro_counts macro) ~default:0 >= limit)
+    in
+    let%map.Or_error selection =
+      Resource.Selection.select_with_budget ~exhausted_limit ~technology ~requirement request
+    in
 
     (* What the elaboration built for the resource actually; *)
     let elaborated_as, sources = sources_of
@@ -216,6 +223,11 @@ let register_open_exn
                (request : Resource.Request.t)])
   | Ok record ->
     t.shared.records <- Map.set t.shared.records ~key:id ~data:record;
+    (match record.selection.implementation with
+     | Macro macro when Option.is_some (Resource.Policy.macro_limit policy macro) ->
+       t.shared.macro_counts <- Map.update t.shared.macro_counts macro
+         ~f:(fun count -> Option.value count ~default:0 + 1)
+     | Macro _ | Flops -> ());
     record
 ;;
 
@@ -276,6 +288,7 @@ module Private = struct
         ; database = Scope.circuit_database scope (* derives from the hardcaml scope's circuit database *)
         ; state = Open
         ; records = Map.empty (module Resource.Id)
+        ; macro_counts = Map.empty (module String)
         ; timing_stages = []
         }
     ; scope

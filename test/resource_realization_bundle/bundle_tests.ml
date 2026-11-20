@@ -58,10 +58,10 @@ let project ?(depth=4) ?(count=1) ?(requirement=Resource_policy.Requirement.Flop
     ~source_inputs:["lib/dune"]
     ~policy:(Option.value policy ~default:(ok (Resource_policy.create ~default:requirement []))) () |> ok
 
-let catalog () =
+let catalog ?(endpoints=[Flow.Stage.Synthesis]) () =
   let module M = Hardcaml_asic_flow_domain in
   let methodology = M.Methodology.create ~id:"bundle" ~label:"Bundle" ~description:"test"
-    ~backend_recipe:Librelane_classic_v1 ~endpoints:[Synthesis]
+    ~backend_recipe:Librelane_classic_v1 ~endpoints
     ~configurable:[Synth_strategy] ~defaults:[M.Parameter.synth_strategy Area_0] |> ok in
   let profile = M.Profile.create ~id:"default" ~label:"Default" ~description:"test" ~assignments:[] |> ok in
   let entry = M.Catalog.Entry.create ~methodology ~profiles:[profile] ~default_profile:"default" |> ok in
@@ -87,7 +87,10 @@ let run root store =
   let again = Bundle.render ~source_root:root ~input_paths:["lib/dune"]
     (Project.Rendered.resolution rendered) |> ok in
   check (!calls = 1 && String.equal (Bundle.identity b) (Bundle.identity again)) "rerender changed resolution/identity";
+  let capped = Resource_policy.create ~default:Exact_or_flop_fallback
+    ~macro_limits:["RM_IHPSG13_1P_256x16_c2_bm_bist",1] [] |> ok in
   List.iter [project ~count:0 (); project ~count:2 (); project ~requirement:Exact_or_flop_fallback ();
+    project ~depth:256 ~count:2 ~policy:capped ();
     project ~depth:256 ~requirement:Exact (); project ~depth:256 ~count:2 ~requirement:Exact ()]
     ~f:(fun p -> let r = render p in
       let m = Bundle.manifest (Project.Rendered.bundle r) in verified m;
@@ -189,7 +192,30 @@ let run root store =
   reject (Bundle.verify_manifest_identity (resign conflicting_intent));
   let methodology = Hardcaml_asic_flow_domain.Catalog.resolve (catalog ()) ~endpoint:Synthesis () |> ok in
   let named_macro = Project.render_result ~methodology ~include_simulation:false macro_project ~source_root:root |> ok in
-  reject (MP.of_rendered named_macro);
+  let single = MP.of_rendered named_macro |> ok in
+  let wire = MP.to_yojson single in
+  let macro_manifest = Bundle.manifest (Project.Rendered.bundle named_macro) in
+  let modify key value = resign (set macro_manifest key value) in
+  let contract = J.get macro_manifest "macro_contract" in
+  let stub_path = "macros/RM_IHPSG13_1P_256x16_c2_bm_bist.blackbox.v" in
+  List.iter [ resign (remove macro_manifest "resource_snapshot")
+    ; modify "operation" (`String "Hardening")
+    ; modify "macro_contract" (set contract "execution" (`String "fresh_full"))
+    ; modify "macro_contract" (set contract "blackbox_sources" (`List [`String "inputs/lib/dune"]))
+    ; modify "files" (`List (List.map (J.list (J.get macro_manifest "files")) ~f:(fun file ->
+        if PJ.equal (J.get file "path") (`String stub_path)
+        then set file "sha256" (`String (PJ.sha256 "different stub")) else file))) ]
+    ~f:(fun tampered -> reject (MP.of_yojson (plan_with_manifest wire tampered)));
+  let staged = catalog ~endpoints:[Synthesis; Floorplan] () in
+  reject (MP.prepare ~catalog:staged ~endpoint:Floorplan macro_project ~source_root:root);
+  reject (MP.prepare ~catalog:staged ~endpoint:Synthesis
+    (project ~depth:256 ~requirement:Exact ~macros:[intent] ()) ~source_root:root);
+  List.iter [project ~depth:256 ~count:2 ~requirement:Exact ();
+             project ~depth:256 ~count:3 ~policy:capped ()] ~f:(fun project ->
+    let p = MP.prepare ~catalog:staged ~endpoint:Synthesis project ~source_root:root |> ok in
+    let plan = MP.Prepared.plan p in
+    check (String.equal (MP.plan_identity plan) (MP.plan_identity (ok (MP.of_string (MP.to_string plan)))))
+      "fresh schema1 multi-bank synthesis must round-trip");
   let prepared = MP.prepare ~catalog:(catalog ()) ~endpoint:Synthesis (project ()) ~source_root:root |> ok in
   let plan = MP.Prepared.plan prepared and bundle = MP.Prepared.bundle prepared in
   let wire = MP.to_yojson plan in
@@ -213,6 +239,12 @@ let run root store =
 
 let () =
   let root = source_root (U.getcwd ()) in
+  if Poly.equal (Sys.get_argv ()) [| (Sys.get_argv ()).(0); "inspection-fixture-plan" |] then (
+    let policy = Resource_policy.create ~default:Exact_or_flop_fallback
+      ~macro_limits:["RM_IHPSG13_1P_256x16_c2_bm_bist",2] [] |> ok in
+    let prepared = MP.prepare ~catalog:(catalog ()) ~endpoint:Synthesis
+      (project ~count:3 ~depth:256 ~policy ()) ~source_root:root |> ok in
+    print_endline (MP.to_string (MP.Prepared.plan prepared)); Stdlib.exit 0);
   let temp = Stdlib.Filename.temp_file "asic-resource-bundle-" "" in
   U.unlink temp; U.mkdir temp 0o700;
   Exn.protect ~f:(fun () -> run root (Filename.concat temp "store"))

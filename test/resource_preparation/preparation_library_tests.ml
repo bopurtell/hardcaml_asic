@@ -83,6 +83,26 @@ let run root =
   check (not (String.equal (P.identity a) (P.identity changed_circuit))) "circuit absent from preparation identity";
   let fallback = prepare (project ~requirement:Exact_or_flop_fallback ()) |> success in
   check (String.equal (reason (first_resource (P.resources fallback))) "flop_fallback") "fallback explanation";
+  let macro_name = "RM_IHPSG13_1P_256x16_c2_bm_bist" in
+  let policy = Resource_policy.create ~default:Exact_or_flop_fallback ~macro_limits:[macro_name,0] [] |> ok in
+  let limited = prepare (project ~depth:256 ~policy ()) |> success in
+  let snapshot = P.of_string (P.to_string limited) |> ok |> P.resources in
+  let row = first_resource snapshot in
+  let selection = J.get row "selection" in
+  let why = J.get selection "reason" in
+  check (Resource.Selection.Reason.equal
+    (Resource_snapshot.records snapshot |> List.hd_exn).selection.reason
+    (Budget_exhausted {macro=macro_name;limit=0})) "budget reason roundtrip";
+  let reject_row row = rejected (Resource_snapshot.of_json
+    (replace (Resource_snapshot.to_json snapshot) "resources" (`List [row]))) in
+  reject_row (replace row "requirement" (J.str "exact"));
+  List.iter ["macro", J.str " "; "limit", `Int (-1); "limit", `Int 1; "limit", J.str "0"] ~f:(fun (k,v) ->
+    reject_row (replace row "selection" (replace selection "reason" (replace why k v))));
+  let wrong_macro = replace row "selection" (replace selection "reason" (replace why "macro" (J.str "other"))) in
+  let changed = replace (P.to_json limited) "resources"
+    (replace (Resource_snapshot.to_json snapshot) "resources" (`List [wrong_macro])) in
+  let payload = J.obj (List.filter (J.fields changed) ~f:(fun (k,_) -> not (String.equal k "identity"))) in
+  rejected (P.of_json (replace changed "identity" (J.str (J.hash "preparation" payload))));
   let macro = prepare (project ~depth:256 ~requirement:Exact ()) |> success in
   let m = first_resource (P.resources macro) in
   J.expect (J.get (J.get m "actual_instances") "status") (J.str "rtl_verified");

@@ -86,6 +86,13 @@ let sexp_field k j = match sexp j with
   | Core.Sexp.List xs -> (match List.filter_map (function Core.Sexp.List [Core.Sexp.Atom key;v] when key=k -> Some v | _ -> None) xs with
     | [v] -> v | _ -> invalid_arg ("missing/duplicate legacy selection "^k))
   | _ -> invalid_arg "invalid legacy resource record"
+let legacy_budget details =
+  match List.sort Core.Sexp.compare details with
+  | [Core.Sexp.List [Atom "limit";Atom n];List [Atom "macro";Atom macro]] ->
+    (match int_of_string_opt n with
+     | Some limit when limit>=0 && string_of_int limit=n && String.trim macro<>"" -> macro,limit
+     | _ -> invalid_arg "invalid legacy macro budget")
+  | _ -> invalid_arg "invalid legacy budget reason fields"
 let inventory manifest =
   Manifest_metadata.validate manifest;
   (match get manifest "macro_contract" with `Null -> () | c ->
@@ -94,7 +101,8 @@ let inventory manifest =
   | `Null ->
     let resources=match get manifest "resources" with `Null -> invalid_arg "historical resource inventory unavailable" | v -> list v in
     let macros=match get (get manifest "macro_contract") "macros" with `Null -> [] | v -> list v in
-    let rows=List.map (fun r ->
+     let exhausted=ref [] and counts=Hashtbl.create 16 in
+     let rows=List.map (fun r ->
       let id=text (get r "id") in
       if not (List.for_all Hardcaml_asic.Resource.Id.is_valid_component (String.split_on_char '/' id)) then invalid_arg "invalid legacy resource identity";
       ignore (Hardcaml_asic.Resource.Id.of_string_exn id);
@@ -112,7 +120,11 @@ let inventory manifest =
        | false,Core.Sexp.Atom "Flops",Core.Sexp.Atom "Explicit_flops"
        | false,Core.Sexp.Atom "Exact_or_flop_fallback",Core.Sexp.List [Core.Sexp.Atom "Flop_fallback";_]
        | true,Core.Sexp.Atom ("Exact"|"Exact_or_flop_fallback"),Core.Sexp.List [Core.Sexp.Atom "Exact_mapping";_] -> ()
+       | false,Core.Sexp.Atom "Exact_or_flop_fallback",Core.Sexp.List (Core.Sexp.Atom "Budget_exhausted"::details) ->
+         exhausted := legacy_budget details :: !exhausted
        | _ -> invalid_arg "inconsistent legacy requirement/selection reason");
+      (if selected then let name=text (get impl "name") in
+         Hashtbl.replace counts name (1 + Option.value (Hashtbl.find_opt counts name) ~default:0));
       let found=List.filter (fun m -> get m "resource"=s id) macros in
       let instances=if not selected then [] else match found with
         | [m] when get m "module"=get impl "name" -> [obj ["module",get m "module";"instance",get m "instance"]]
@@ -122,7 +134,9 @@ let inventory manifest =
         if get i "instance"<>s canonical then invalid_arg "legacy macro instance is not canonical resource identity") instances;
       obj ["resource_id",s id;"requested_contract",get r "request";"selected_implementation",impl;"instances",arr instances;
         "selection",get r "selection";"requirement",get r "requirement";"policy",get r "policy";"inventory_record",r]) resources in
-    List.iter (fun m -> if not (List.exists (fun r -> get r "resource_id"=get m "resource" && get (get r "selected_implementation") "name"=get m "module") rows) then invalid_arg "unowned legacy macro contract") macros;
+     List.iter (fun (macro,limit) ->
+       if Option.value (Hashtbl.find_opt counts macro) ~default:0 <> limit then invalid_arg "legacy macro count disagrees with exhausted budget") !exhausted;
+     List.iter (fun m -> if not (List.exists (fun r -> get r "resource_id"=get m "resource" && get (get r "selected_implementation") "name"=get m "module") rows) then invalid_arg "unowned legacy macro contract") macros;
     "legacy_resources_macro_contract",rows
   | snapshot ->
     (match Hardcaml_asic.Elaboration.Resource_snapshot.of_json snapshot with Ok _ -> () | Error _ -> invalid_arg "malformed resource_snapshot");
@@ -186,6 +200,21 @@ let verilog_instances ~top raw =
   match lex 0 [] with "module"::name::"("::xs when name=top -> (match ports [] xs with
     | ";"::xs -> body [] xs | _ -> invalid_arg "unsupported module header tokens")
     | _ -> invalid_arg "netlist top/header mismatch"
+
+(* A checkpoint NL identifies cells, not their areas or optimized flop owners.
+   Reconcile the declared macro population jointly. Unrelated cells are outside
+   this observation, not implicitly classified as verified standard cells. *)
+let checkpoint_macro_rows ~top ~inventory ~netlist ~refs =
+  let cells = verilog_instances ~top netlist and exp = expected inventory in
+  unique "netlist instance" (List.map fst cells);
+  let types = List.map (fun r -> text (get r "module")) exp in
+  let names = List.concat_map (fun r -> List.map (fun i -> text (get i "instance"))
+    (list (get r "instances"))) exp in
+  let relevant = List.filter (fun (n,t) -> List.mem n names || List.mem t types) cells in
+  let reconciled = reconcile ~expected:exp ~instances:(Some relevant) ~known_standard_cells:[] ~reason:None in
+  List.map (fun row -> obj (fields row @ ["stage",s "synthesis";
+    "producer",s "verified checkpoint native state.nl"; "evidence_refs",arr refs]))
+    (list (get reconciled "resources"))
 
 let measurement ~stage ~refs ~scope ~unit_ ~definition value reason = obj ["value",value;"unit",s unit_;"definition",s definition;
   "stage",s stage;"scope",s scope;"evidence_refs",arr refs;"unavailable_reason",(if value=`Null then s reason else `Null)]
@@ -507,6 +536,19 @@ let evaluate evidence =
       | _ -> invalid_arg "unknown inventory implementation") inventory_rows;
     let inventory_ids=List.map (fun r -> text (get r "resource_id")) inventory_rows in
     unique "inventory resource ID" inventory_ids;
+    (* The rows retain the original records. Re-project them with the same
+       adapter used at collection so duplicated selection fields cannot drift,
+       even in an otherwise self-consistent set of observations. *)
+    let records=arr (List.map (fun r -> get r "inventory_record") inventory_rows) in
+    let macros=List.concat_map (fun r -> List.map (fun i ->
+      obj ["resource",get r "resource_id";"module",get i "module";"instance",get i "instance"])
+      (list (get r "instances"))) inventory_rows in
+    let source=if get evidence "coverage"=s "resource_snapshot" then
+      "resource_snapshot",obj ["schema_version",`Int 1;"project",s "inventory";"top",s "inventory";
+        "scope",s "resolved";"mode",s "implementation";"resources",records]
+      else "resources",records in
+    let _,projected=inventory (obj [source;"macro_contract",obj ["schema_version",`Int 1;"macros",arr macros]]) in
+    if not (List.for_all2 equal inventory_rows projected) then invalid_arg "inventory projection disagrees with recorded resources";
     let expected_inventory=expected inventory_rows in
     let macro_types=List.map (fun e -> text (get e "module")) expected_inventory |> List.sort_uniq String.compare in
     unique "inventory instance identity" (List.concat_map (fun e -> List.map (fun i -> text (get i "instance")) (list (get e "instances"))) expected_inventory);

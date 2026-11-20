@@ -133,9 +133,10 @@ covers fresh depth128/256 and Flops/Exact256 bundles, profile-only changes, igno
 parameters, actual historical named profiles, physical self and synthesis/physical
 comparisons, API/CLI parity and corruption/race negatives. No EDA was run.
 
-Exact256 bundle emission is supported; **Exact macro `Methodology_plan.prepare`
-remains a pre-existing unsupported named-macro boundary**. This feature does not
-enable it. Historical records are never retrofitted with hardware metadata.
+The original comparison acceptance exercised Exact256 bundle emission. The
+current planner also supports [fresh named stock SRAM synthesis](segmented-sram.md)
+for unplaced schema-1 Exact256 macros (including mixed SRAM/flop designs).
+Historical records are never retrofitted with hardware metadata.
 
 Firmware size and fetch count remain unsupported for the memory protocol below.
 There is no automatic winner, experiment scheduler or Protemu configuration selection.

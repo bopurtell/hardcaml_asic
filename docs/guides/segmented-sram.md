@@ -1,5 +1,12 @@
 # Stock SRAM segmented execution — bounded release scope
 
+**Synthesis-only bundles:** `sram_synthesis1` is a separate capability from
+the physical flow below. It accepts schema-1 `Synthesis` bundles with one or
+more registered stock 256×16 SRAM instances, including designs mixing SRAMs
+and flop fallback. Only a fresh synthesis endpoint is supported. Its checkpoint
+has profile `stock256x16_fresh_synthesis_v1` and no restart targets. It makes
+no placement or timing qualification claim.
+
 ## Complete tooling scope, qualified 2026-11-12
 
 The provider supports one `RM_IHPSG13_1P_256x16_c2_bm_bist` macro, R0, on

@@ -132,7 +132,7 @@ let run ?(verbose=false) target = protect (fun () ->
     | Coarse_run _ -> invalid_arg "coarse target requires Report_service"
     | Checkpoint path ->
       let m=checked (Checkpoint.read path) in
-      let r=checked (Runner.reference ~boundary:m.boundary ~path ~identity:m.identity) in
+      let r=Runner.of_checkpoint ~path m in
       "checkpoint",path,J.null,None,[Runner.reference_json r]
     | Stage_execution {path;selected_record} ->
       let document=Evidence_json.read selected_record in

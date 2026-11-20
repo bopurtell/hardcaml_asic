@@ -85,20 +85,8 @@ let decode raw =
   List.iter (fun r ->
     let boundary=match S.of_string (text (get r "boundary")) with Ok b -> b | Error _ -> invalid_arg "invalid reference boundary" in
     let reference=checked (Runner.reference ~boundary ~path:(text (get r "path")) ~identity:(text (get r "identity"))) in
-    let expected = Runner.reference_json reference in
-    let expected =
-      if Execution_plan.Stage_plan.schema_version plan < 4 && boundary = S.Routing
-      then (
-        match expected with
-        | J.Object xs ->
-          codec
-            (J.object_
-               (("restart_targets", J.array [ codec (J.string "signoff") ])
-                :: List.remove_assoc "restart_targets" xs))
-        | _ -> assert false)
-      else expected
-    in
-    if J.canonical r<>J.canonical expected then invalid_arg "invalid checkpoint reference capabilities";
+    if not (Runner.reference_matches ~legacy_routing:(Execution_plan.Stage_plan.schema_version plan < 4) reference r)
+    then invalid_arg "invalid checkpoint reference capabilities";
     let rec locate i = if i>=List.length actions then invalid_arg "checkpoint reference order/association mismatch"
       else let a=List.nth actions i in
         if a.stage=Execution_plan.Action.Physical boundary then i else locate (i+1) in
@@ -143,6 +131,14 @@ let validate_snapshot ?(admit_metadata=(fun _ -> ())) raw =
       if get reference "identity"<>codec (J.string m.identity) ||
          get reference "boundary"<>codec (J.string (S.to_string m.boundary)) then
         invalid_arg "selected checkpoint reference identity/boundary mismatch";
+      let actual = Runner.reference_json (Runner.of_checkpoint ~path m) in
+      if reference <> actual then (
+        (* Older records projected the generic boundary defaults for restricted
+           checkpoints. Keep them readable for profiles predating fresh SRAM. *)
+        let historical = checked (Runner.reference ~path ~boundary:m.boundary ~identity:m.identity) in
+        if get m.raw "macro_profile" = codec (J.string Macro_contract.synthesis_profile) ||
+           reference <> Runner.reference_json historical
+        then invalid_arg "checkpoint reference disagrees with published capabilities");
       let segment=Evidence_json.read (path^"/segment.json") in
       let bytes=Evidence_json.raw_bytes segment in
       if String.length bytes>32*1024*1024 then invalid_arg "checkpoint segment byte bound exceeded";

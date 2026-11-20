@@ -22,3 +22,8 @@ val inventory : Evidence_json.t -> string * Evidence_json.t list
     absence. Unknown classification fails required retention coverage. *)
 val reconcile : expected:Evidence_json.t list -> instances:(string * string) list option
   -> known_standard_cells:string list -> reason:string option -> Evidence_json.t
+
+(** Retention of declared macro instances in a complete structural top-module
+    netlist. Raises [Invalid_argument] for unsupported/untrustworthy input. *)
+val checkpoint_macro_rows : top:string -> inventory:Evidence_json.t list -> netlist:string
+  -> refs:Evidence_json.t list -> Evidence_json.t list

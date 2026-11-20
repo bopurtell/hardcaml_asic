@@ -165,8 +165,9 @@ let integration root =
     let manifest=Bundle.manifest (Project.Rendered.bundle rendered) in
     check ("Exact render succeeds: "^label) (List.Assoc.mem (fields manifest) "macro_contract" ~equal:String.equal);
     let result=Methodology_plan.prepare ~catalog:cat ~endpoint:Synthesis ~include_simulation:false p ~source_root:root in
-    reject ("Exact named prepare rejects: "^label) result;
-    label,`String (match result with Error e -> Error.to_string_hum e | Ok _ -> "unexpected success")) in
+    let plan=Methodology_plan.Prepared.plan (ok result) in
+    check ("Exact unplaced named synthesis succeeds: "^label) (String.equal (Methodology_plan.project_name plan) "review");
+    label,`String (Methodology_plan.plan_identity plan)) in
   obj ["status",`String "passed";"checks",`Int (List.length !checks);
     "controls",`List (List.map (List.rev !checks) ~f:(fun s -> `String s));"exact_prepare",obj results]
 let () =

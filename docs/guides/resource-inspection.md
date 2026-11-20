@@ -14,7 +14,10 @@ Kinds: `bundle`, `coarse_run`, `execution`, `finalization`. They are explicit:
 do not infer a coarse run from the parent directory of a named execution file.
 Bundle inspection verifies the manifest and all advertised member bytes. Named
 execution/finalization association uses existing checked records, preserving operation
-and run identities. Unsupported realization remains unavailable, not inferred from
+and run identities. Completed named stock-SRAM synthesis-only executions with
+the `stock256x16_fresh_synthesis_v1` checkpoint profile can report per-instance
+synthesis matches from the verified native netlist. Select the execution rather
+than the emitted bundle to see them. Unsupported realization remains unavailable, not inferred from
 checkpoint counts. No query builds, emits, finalizes, probes EDA or changes evidence.
 
 Public library:

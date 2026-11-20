@@ -298,6 +298,9 @@ let make
        effective_parameters
    in
    if List.Assoc.mem (match m with `Assoc xs -> xs | _ -> []) "macro_contract" ~equal:String.equal then (
+     if J.equal (J.get (J.get m "macro_contract") "schema_version") (`Int 1)
+        && (legacy || not (List.equal Flow.Stage.equal stages [Synthesis])) then
+       J.fail "schema1 SRAM supports fresh named Synthesis only";
      if legacy || List.mem stages Flow.Stage.Signoff ~equal:Flow.Stage.equal then
        J.fail "named segmented SRAM Signoff is unsupported; maximum endpoint is Timing";
      if List.exists ["timing_intent";"timing_native_coverage";"timing_physical_qualification"]

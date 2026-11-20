@@ -29,10 +29,13 @@ type step = private
 (** Publication attestation in the existing Python reference format. [reference]
     checks syntax, not files; only a publisher owner may attest to promotion.
     Prefer [of_checkpoint_publication] for the actual writer. *)
-type reference = private { boundary : Stage.t; path : string; identity : string }
+type reference = private { boundary : Stage.t; path : string; identity : string; restart_targets : Stage.t list }
 val reference : boundary:Stage.t -> path:string -> identity:string -> (reference, string) result
 val of_checkpoint_publication : Checkpoint_publisher.publication -> reference
+val of_checkpoint : path:string -> Checkpoint.t -> reference
 val reference_json : reference -> Identity_json.t
+val reference_matches : ?equal:(Identity_json.t -> Identity_json.t -> bool) ->
+  legacy_routing:bool -> reference -> Identity_json.t -> bool
 type 'checkpoint publication = { evidence : reference; checkpoint : 'checkpoint }
 type 'checkpoint source = { boundary : Stage.t; checkpoint : 'checkpoint }
 type ('run, 'segment) outcome =

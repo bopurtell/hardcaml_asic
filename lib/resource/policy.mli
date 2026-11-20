@@ -61,6 +61,16 @@ end
 
 type t [@@deriving sexp_of]
 
-val create : ?default:Requirement.t -> Rule.t list -> t Or_error.t
+(** [macro_limits] caps the number of selections of each named macro per elaboration,
+    in registration order across scopes. Unlisted macros are unlimited. A limit of zero
+    disables a macro. Duplicate names, blank names and negative limits are rejected. *)
+val create
+  :  ?default:Requirement.t
+  -> ?macro_limits:(string * int) list
+  -> Rule.t list
+  -> t Or_error.t
+
+val macro_limit : t -> string -> int option
+val limited_macro_names : t -> string list
 val rules : t -> Rule.t list
 val lookup : t -> Id.t -> (Requirement.t * Applied.t) Or_error.t

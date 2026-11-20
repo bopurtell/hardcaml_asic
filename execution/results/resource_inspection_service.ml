@@ -34,7 +34,6 @@ let read path =
     if before.st_dev<>after.st_dev || before.st_ino<>after.st_ino || before.st_size<>after.st_size
        || before.st_mtime<>after.st_mtime || before.st_ctime<>after.st_ctime
     then invalid_arg "source changed during read"; raw)
-let json path = strict (read path)
 let ref_ path raw format = obj ["path",s path;"sha256",s (Identity_json.sha256_bytes raw);"format",s format]
 let verify_ref root r =
   let p=safe root (text (get r "path")) in
@@ -75,7 +74,7 @@ let validate_bundle_inventory manifest =
     let actual=List.filter (String.starts_with ~prefix:"inputs/") names in
     if List.sort String.compare copies<>List.sort String.compare actual then invalid_arg "source input copy inventory mismatch"
   | Some _ -> invalid_arg "source_inputs must be an array"
-type source = { root:string; inventory:E.t list; inventory_status:string; inventory_reason:E.t;
+type source = { native_rows:E.t list; root:string; inventory:E.t list; inventory_status:string; inventory_reason:E.t;
   evidence:E.t; provenance:E.t; refs:E.t list; binding:E.t }
 let bundle root =
   let raw=read (safe root "manifest.json") in
@@ -97,19 +96,55 @@ let bundle root =
     if get r "sha256"<>get f "sha256" then invalid_arg "bundle member hash mismatch";r) files in
   let names=List.map (fun r -> text (get r "path")) refs in
   if List.length names<>List.length (List.sort_uniq String.compare names) then invalid_arg "duplicate bundle member";
-  {root;inventory;inventory_status;inventory_reason;evidence=`Null;refs=ref_ "manifest.json" raw "json"::refs;binding=manifest;
-   provenance=obj ["build_identity",get manifest "identity";"inventory_status",s inventory_status;"inventory_reason",inventory_reason;"scope",s "verified bundle members; selection and RTL inventory only"]}
+  {native_rows=[];root;inventory;inventory_status;inventory_reason;evidence=`Null;refs=ref_ "manifest.json" raw "json"::refs;binding=manifest;
+   provenance=obj ["build_identity",get manifest "identity";"project",get manifest "project";
+     "hardware_assignments",get (get manifest "hardware_variant") "assignments";
+     "inventory_status",s inventory_status;"inventory_reason",inventory_reason;"scope",s "verified bundle members; selection and RTL inventory only"]}
+(* Only inspect the native state's exact scalar NL view of this validated
+   publication. No searching a run tree or following unrelated view paths. *)
+let checkpoint_synthesis ~root ~manifest ~inventory (path, (cp : Checkpoint.t)) =
+  let unavailable why = [], [], Some why in
+  if cp.schema <> Schema_3 || cp.boundary <> Synthesis || cp.restart_targets <> [] ||
+     get (strict (Identity_json.canonical cp.raw)) "macro_profile" <> s Macro_contract.synthesis_profile
+  then [], [], None
+  else if not (within root path) || path <> Unix.realpath path then unavailable "checkpoint is outside the execution workspace"
+  else
+    let relative p = String.sub p (String.length root + 1) (String.length p - String.length root - 1) in
+    let member name format =
+      let expected=List.assoc name cp.files in
+      let p=safe path name in
+      if p <> Filename.concat path name then invalid_arg "checkpoint member is not an owned file";
+      let bytes=read p in
+      let r=ref_ (relative p) bytes format in
+      if get r "sha256" <> s expected.sha256 then invalid_arg "checkpoint member hash changed";
+      bytes,r in
+    let state,state_ref=member "state.json" "native_state" in
+    (* Checkpoint.validate already projected and checked the entire native state,
+       including nonfinite metrics; only consume the bound scalar NL here. *)
+    match get (Yojson.Safe.from_string state) "nl" with
+    | `String nl when within (path ^ "/views") nl && nl=Unix.realpath nl ->
+      let name=String.sub nl (String.length path+1) (String.length nl-String.length path-1) in
+      let expected=List.assoc name cp.files in
+      if Int64.of_string expected.bytes > 33554432L then unavailable "checkpoint netlist exceeds inspection limit"
+      else let netlist,nl_ref=member name "verilog_gate_netlist" in
+        let refs=[state_ref;nl_ref] in
+        (try Resource_evidence.checkpoint_macro_rows ~top:(text (get manifest "top_module"))
+               ~inventory ~netlist ~refs, refs, None
+         with Invalid_argument why -> [],refs,Some ("unsupported checkpoint netlist: " ^ why))
+    | _ -> unavailable "checkpoint has no single owned native netlist view"
+
 let source kind target =
   let root=if kind="execution" then Filename.dirname target else target in
   match kind with
   | "bundle" -> bundle root
   | "coarse_run" ->
     let evidence=checked (Resource_evidence.inspect ~run_dir:root) in
-    {root; inventory=list (get evidence "resource_inventory");inventory_status="available";inventory_reason=`Null;evidence;
+    {native_rows=[];root; inventory=list (get evidence "resource_inventory");inventory_status="available";inventory_reason=`Null;evidence;
      provenance=get evidence "provenance";refs=list (get evidence "evidence_refs");binding=evidence}
   | "execution" ->
     let raw=read target in
-    let record=checked (Stage_report_service.validate_execution target) in
+    let captured=match Identity_json.parse raw with Ok j -> j | Error e -> invalid_arg (Identity_json.error_message e) in
+    let record,checkpoints=checked (Stage_report_service.validate_execution_snapshot captured) in
     let inventory,manifest,inventory_reason=match record.methodology with
       | None -> None,`Null,s "historical execution has no bound methodology/bundle inventory"
       | Some m ->
@@ -129,20 +164,30 @@ let source kind target =
         if get r "sha256"<>get methodology "snapshot_sha256" then invalid_arg "methodology snapshot changed";
         [reference;r]
       | _ -> [reference] in
-    let record_json=json target in
+    let record_json=strict raw in
+    let native_rows,native_refs,diagnostic = match checkpoints with
+      | [cp] when record.status="completed" && Option.is_some record.methodology &&
+          get (get record_json "plan") "schema_version"=`Int 4 &&
+          get (get manifest "macro_contract") "schema_version"=`Int 1 &&
+          get (get record_json "plan") "stages"=arr [s "synthesis"] &&
+          get (get record_json "plan") "initial_boundary"=`Null ->
+        checkpoint_synthesis ~root ~manifest ~inventory cp
+      | _ -> [],[],None in
+    let native = if native_rows=[] then [] else ["checkpoint_synthesis",arr native_rows] in
+    let reason = match diagnostic with None -> [] | Some why -> ["synthesis_unavailable_reason",s why] in
     let build_identity=if manifest<>`Null then get manifest "identity" else
       match record.references with [] -> `Null | reference::_ ->
         let reference=strict (Identity_json.canonical reference) in
         let checkpoint=checked (Checkpoint.read (text (get reference "path"))) in
         get (strict (Identity_json.canonical checkpoint.compatibility)) "bundle_identity" in
-    {root;inventory;inventory_status;inventory_reason;evidence=`Null;refs;binding=obj ["execution",record_json;"manifest",manifest];
-     provenance=obj ["attempt_id",get (json target) "attempt_id";"execution",reference;
+    {native_rows;root;inventory;inventory_status;inventory_reason;evidence=`Null;refs=refs@native_refs;binding=obj (["execution",record_json;"manifest",manifest]@native@reason);
+     provenance=obj ["attempt_id",get record_json "attempt_id";"execution",reference;
        "requested_stage",s (Execution_plan.Stage.to_string (Execution_plan.Stage_plan.endpoint record.plan));
        "execution_status",s record.status;"checkpoints",get record_json "artifacts";
        "methodology",methodology;
        "build_identity",build_identity;
        "inventory_status",s inventory_status;"inventory_reason",inventory_reason;
-       "scope",s "validated named execution and methodology inventory; per-resource realization unavailable"]}
+       "scope",s (if native_rows=[] then "validated named execution and methodology inventory; per-resource realization unavailable" else "stock SRAM retention in verified native synthesis netlist only")]}
   | "finalization" ->
     let operation=Finalization_record.to_json (checked (Finalization_record.read root)) in
     let op=strict (Identity_json.canonical operation) in
@@ -181,15 +226,18 @@ let source kind target =
     if get (get evidence "provenance") "run_id"<>get op "attempt_id"
        || canonical (get (get evidence "provenance") "evidence_origin")<>canonical (get context "evidence_origin")
     then invalid_arg "finalization resource context provenance mismatch";
-    {root;inventory=list (get evidence "resource_inventory");inventory_status="available";inventory_reason=`Null;evidence;
+    {native_rows=[];root;inventory=list (get evidence "resource_inventory");inventory_status="available";inventory_reason=`Null;evidence;
      provenance=obj ["finalization",op;"resource_provenance",get evidence "provenance"];
      binding=obj ["operation",op;"results_sha256",get result_ref "sha256";"evidence",evidence];
      refs=ref_ "operation.json" (read (safe root "operation.json")) "json"::
        ref_ (String.sub result_path (String.length root+1) (String.length result_path-String.length root-1)) results_raw "json"::list (get evidence "evidence_refs")}
   | _ -> invalid_arg "invalid resource target kind"
 let observation source stage = List.find_opt (fun o -> get o "stage"=s stage) (list (get source.evidence "observations"))
-let observed source id stage = match observation source stage with None -> `Null | Some o ->
-  Option.value (List.find_opt (fun r -> get r "resource_id"=s id) (list (get o "resources"))) ~default:`Null
+let observed source id stage =
+  let rows = match observation source stage with Some o -> list (get o "resources")
+    | None when stage="synthesis" -> source.native_rows
+    | None -> [] in
+  Option.value (List.find_opt (fun r -> get r "resource_id"=s id) rows) ~default:`Null
 let sections=["inventory";"synthesis";"final";"geometry";"timing";"electrical";"provenance"]
 let section_values source row section =
   let id=text (get row "resource_id") in
@@ -254,13 +302,20 @@ let contract_display request =
     kind^" "^Core.Sexp.to_string_mach contract
   with _ -> show request
 let reason_display selection =
+  let budget macro limit = Printf.sprintf "budget_exhausted (macro=%s, limit=%s)" macro limit in
   match selection with
   | `Assoc _ -> let r=get selection "reason" in
     let kind=show (get r "kind") in
-    if get r "technology"=`Null then kind else kind^" ("^show (get r "technology")^")"
+    if kind="budget_exhausted" then budget (text (get r "macro"))
+      (match get r "limit" with `Int n -> string_of_int n | `Intlit n -> n | _ -> invalid_arg "invalid budget limit")
+    else if get r "technology"=`Null then kind else kind^" ("^show (get r "technology")^")"
   | `String raw ->
     (try match sexp_field "reason" (Core.Sexp.of_string raw) with
       | Some (Core.Sexp.Atom "Explicit_flops") -> "explicit_flops"
+      | Some (Core.Sexp.List (Core.Sexp.Atom "Budget_exhausted"::details)) ->
+        let field k=match sexp_field k (Core.Sexp.List details) with
+          | Some (Core.Sexp.Atom value) -> value | _ -> invalid_arg "missing budget field" in
+        budget (field "macro") (field "limit")
       | Some (Core.Sexp.List [Core.Sexp.Atom kind;details]) ->
         let technology=match sexp_field (if kind="Exact_mapping" then "technology" else "no_exact_mapping_in") details with
           | Some (Core.Sexp.Atom t) -> t | _ -> Core.Sexp.to_string_mach details in
@@ -332,7 +387,11 @@ let run ~kind ~target ?(query="index") ?resource_id ?section ?expected_digest ?a
     let result=match query with
     | "index" ->
       if List.length source.inventory>4096 then invalid_arg "resource inventory exceeds 4096 rows";
-      let diagnostics=if source.evidence=`Null then
+      let diagnostics=if kind="execution" && get source.binding "checkpoint_synthesis"<>`Null then
+        ["Synthesis retention only; optimized flops and physical placement are not attributed"]
+        else if kind="execution" && get source.binding "synthesis_unavailable_reason"<>`Null then
+          [show (get source.binding "synthesis_unavailable_reason")]
+        else if source.evidence=`Null then
         ["realization unavailable: inventory is not implementation retention"] @
         (if source.inventory_status="unavailable" then ["inventory unavailable: "^show source.inventory_reason] else [])
         else Resource_evidence.problems source.evidence @

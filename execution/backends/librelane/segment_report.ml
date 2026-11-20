@@ -15,7 +15,7 @@ let of_json ~(request:Backend_protocol.request) raw = try
      "gate_evidence"; "acceptance" ] @ if macro then ["macro_profile";"macro_evidence"] else []) in
    let get k = List.assoc k xs in
    if macro then (
-     if get "macro_profile" <> str Macro_contract.segmented_profile then fail "unsupported macro segment profile";
+     if not (Macro_contract.valid_profile (text (get "macro_profile")) request.boundary) then fail "unsupported macro segment profile";
      match Checkpoint.macro_evidence ~boundary:request.boundary (get "macro_evidence") with
      | Ok _ -> () | Error e -> fail e);
   let expect k v = if get k <> v then fail ("inconsistent segment report: " ^ k) in

@@ -59,6 +59,7 @@ module Reason = struct
     | Explicit_flops
     | Exact_mapping of { technology : string }
     | Flop_fallback of { no_exact_mapping_in : string }
+    | Budget_exhausted of { macro : string; limit : int }
   [@@deriving compare, equal, sexp_of]
 end
 
@@ -77,12 +78,12 @@ type t =
 (* The main sauce here for selection; given what the technology can map and what the
    project accepts, choose an implementation for [request];
 
-   Requirement              Exact mapping   Result
-   Flops                  , any          -> Flops, Explicit_flops;
-   Exact                  , Some macro   -> Macro, Exact_mapping;
-   Exact_or_flop_fallback , Some macro   -> Macro, Exact_mapping;
-   Exact_or_flop_fallback , None         -> Flops, Flop_fallback;
-   Exact                  , None         -> error;
+   Requirement              Exact mapping and capacity       Result
+   Flops                  , any                           -> Flops, Explicit_flops;
+   Exact or fallback      , macro with a slot (or no cap) -> Macro, Exact_mapping;
+   Exact_or_flop_fallback , mapped macro at its limit     -> Flops, Budget_exhausted;
+   Exact_or_flop_fallback , no exact mapping              -> Flops, Flop_fallback;
+   Exact                  , no exact mapping or slot      -> error;
 
    Returns Or_error rather than raising so the caller decides how to fail;
    Elaboration.Context.register_exn turns the error into a raise, tagged with the
@@ -93,7 +94,8 @@ type t =
    compile here until someone decides what it selects -> see expect tests
    (test/test_selection.ml);
 *)
-let select
+let select_with_budget
+    ~exhausted_limit
     ~(technology : Technology.t) (* what the technology can map; *)
     ~(requirement : Policy.Requirement.t) (* what the project accepts; *)
     (request : Request.t) (* kind plus contract, technology independent; *)
@@ -106,12 +108,19 @@ let select
      harmless while mapping lists are small, but the lookup could be skipped for Flops; *)
   | Flops, _ -> Ok { implementation = Flops; reason = Explicit_flops }
 
-  (* A macro is allowed and the technology has one for exactly this contract; take it *)
-  | (Exact | Exact_or_flop_fallback), Some { macro; _ } ->
-    Ok
+   (* The mapping matches; the project's remaining capacity decides whether it can be used. *)
+  | ((Exact | Exact_or_flop_fallback) as macro_requirement), Some { macro; _ } ->
+    (match exhausted_limit macro.name with
+     | Some limit when Policy.Requirement.equal macro_requirement Exact ->
+       Or_error.error_s
+         [%message "macro instance budget exhausted, and flop fallback is not permitted"
+                     ~macro:(macro.name : string) (limit : int)]
+     | Some limit ->
+       Ok { implementation = Flops; reason = Budget_exhausted { macro = macro.name; limit } }
+     | None -> Ok
       { implementation = Macro macro.name
       ; reason         = Exact_mapping { technology = technology.name }
-      }
+      })
 
   (* No macro, but fallback is allowed; flops, and the reason says it was a fallback *)
   | Exact_or_flop_fallback, None ->
@@ -132,6 +141,10 @@ let select
         "technology has no exact implementation for the requested contract, and flop \
          fallback is not permitted"
           ~technology:technology.name]
+;;
+
+let select ~technology ~requirement request =
+  select_with_budget ~exhausted_limit:(fun _ -> None) ~technology ~requirement request
 ;;
 
 [@@@ocamlformat "enable"]

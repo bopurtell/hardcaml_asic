@@ -2,8 +2,9 @@
 
 The end-to-end path from a Hardcaml design to preserved evidence. The supported
 physical path is deliberately narrow: Tiny Tapeout `6x4`, IHP `ihp-sg13cmos5l`
-and LibreLane. Registered memory is available as a behavioral simulation model or
-explicit synthesizable flops; there is no SRAM macro backend.
+and LibreLane. Registered memory uses a behavioral simulation model; implementation
+can select flops or an exact technology macro within the
+[qualified SRAM scope](segmented-sram.md).
 
 The workflow has three separate layers:
 
@@ -93,10 +94,12 @@ What the consumer owns:
 - **Timing:** declare the primary clock and any real min/max I/O timing
   assumptions. Do not fabricate board timing.
 - **Resource policy** is mandatory:
-  - `Flops` is the currently supported memory path.
+  - `Flops` requests synthesizable flops even when a macro matches.
   - `Exact` rejects a shape without an exact technology mapping.
   - `Exact_or_flop_fallback` allows flops only as a recorded fallback, never a
     silent one.
+  - Optional [`~macro_limits`](resource-preparation.md#limit-the-number-of-selected-macro-instances)
+    caps selections per macro name in registration order.
 
 The [target reference](../reference/target-reference.md) defines the accepted
 boundary, timing subset, protected settings and helper behavior.
@@ -320,8 +323,8 @@ collateral. Archives made before complete-input preservation may lack
 - **Environment errors:** preflight reports missing or mismatched tools,
   revisions, hashes, PDK views, support tools, Python and container image. It
   never installs or silently substitutes them.
-- **Memory:** no SRAM macro backend exists. Flop synthesis evidence does not
-  prove memory placement/routing feasibility.
+- **Memory:** see [segmented SRAM](segmented-sram.md) for the supported macro and
+  physical stages. Flop synthesis evidence does not prove macro placement or routing.
 - **ABC delay print:** the pinned LibreLane ABC renderer passes a `cell/pin`
   token where ABC expects a cell name. That invalidates only ABC's printed delay
   estimate, not mapped cells/area or the post-route OpenSTA results (tracked as

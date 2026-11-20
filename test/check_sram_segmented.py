@@ -35,14 +35,17 @@ def require_ok(result):
     return json.loads(result.stdout)
 
 
-def inspect_artifact(inspector, artifact):
+def inspect_artifact(inspector, artifact, *, synthesis_only=False):
     path = Path(artifact["path"])
     result = require_ok(run([inspector, "--json", path]))
     assert result["validation"] == "host_only" and not result["runtime_closure_validated"]
     manifest = result["manifest"]
     assert manifest["schema_version"] == 3 and manifest["identity"] == artifact["identity"]
-    assert manifest["macro_profile"] == "stock256x16_r0_through_timing_v1"
-    if artifact["boundary"] == "timing":
+    assert manifest["macro_profile"] == ("stock256x16_fresh_synthesis_v1" if synthesis_only
+                                        else "stock256x16_r0_through_timing_v1")
+    for key in ("restart_targets", "restart_supported"):
+        assert artifact[key] == manifest[key], (key, artifact, manifest[key])
+    if synthesis_only or artifact["boundary"] == "timing":
         assert not manifest["restart_supported"] and manifest["restart_targets"] == []
     elif artifact["boundary"] == "synthesis":
         assert manifest["restart_targets"] == ["floorplan"]
@@ -71,10 +74,11 @@ def verify(args, root):
     resources = args.resources.resolve()
     fixtures = repo / "test"
     templates = {}
-    for mode in ("physical", "synthesis", "linked"):
+    for mode in (("synthesis",) if args.synthesis_only else ("physical", "synthesis", "linked")):
         progress("emit " + mode)
         bundle = root / ("template-" + mode)
-        p = run([args.emitter, "emit-single-" + mode, repo, bundle])
+        p = run([args.emitter, "emit-dual-synthesis" if mode == "synthesis" else "emit-single-" + mode,
+                 repo, bundle])
         assert p.returncode == 0, (p.stdout, p.stderr)
         templates[mode] = bundle
     discovery = require_ok(run([args.plan_inspect], input=json.dumps({
@@ -164,6 +168,50 @@ def verify(args, root):
     def assert_no_launch(c, result, before=()):
         assert result.returncode != 0, result.stdout
         assert requests(c) == list(before), (result.stdout, result.stderr)
+
+    progress("fresh schema1 multi-SRAM synthesis, terminal schema3 checkpoint")
+    c = case("synthesis")
+    contract = load(c["bundle"] / "manifest.json")["macro_contract"]
+    assert contract["schema_version"] == 1 and contract["execution"] == "synthesis_only"
+    assert {m["resource"] for m in contract["macros"]} == {"left", "right"}
+    summary = require_ok(execute(c, "synthesis"))
+    artifact, = summary["artifacts"]
+    assert summary["status"] == "completed" and artifact["boundary"] == "synthesis"
+    manifest, state = inspect_artifact(args.inspector, artifact, synthesis_only=True)
+    assert state["nl"] and manifest["macro_evidence"] == []
+    segment = load(Path(artifact["path"]) / "segment.json")
+    assert segment["macro_profile"] == manifest["macro_profile"] and segment["source_boundary"] is None
+    before = requests(c)
+    assert sorted(load(p)["operation"] for p in before) == ["execute_segment", "validate_publication"]
+    execution_file = c["workspace"] / ("execution-" + summary["attempt_id"] + ".json")
+    for target in (execution_file, artifact["path"]):
+        report = require_ok(run([args.reporter, "--json", "--target", target]))
+        assert report["checkpoints"][0]["reference"] == artifact
+    wrong = copy.deepcopy(summary)
+    wrong["artifacts"][0].update(restart_supported=True, restart_targets=["floorplan"])
+    wrong_path = c["directory"] / "execution-wrong.json"
+    wrong_path.write_text(json.dumps(wrong))
+    rejected = run([args.reporter, "--json", "--target", wrong_path])
+    assert rejected.returncode != 0 and "published capabilities" in rejected.stderr, rejected
+    assert_no_launch(c, execute(c, "floorplan", artifact["path"]), before)
+    assert_no_launch(c, execute(c, "floorplan"), before)
+    manifest_path = Path(artifact["path"]) / "manifest.json"
+    original = manifest_path.read_bytes()
+    manifest_path.chmod(0o600)
+    try:
+        forged = dict(manifest, restart_supported=True, restart_targets=["floorplan"])
+        del forged["identity"]
+        forged["identity"] = hashlib.sha256(
+            json.dumps(forged, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+        manifest_path.write_text(json.dumps(forged))
+        assert run([args.inspector, "--json", artifact["path"]]).returncode != 0
+    finally:
+        manifest_path.write_bytes(original)
+        manifest_path.chmod(0o444)
+    if args.synthesis_only:
+        print("Fresh schema1 synthesis: validated publication, matching execution/checkpoint reports, "
+              "forged restart capability and physical continuation rejected")
+        return
 
     # Each fresh supported prefix is independent; no ready artifact inferred from exit alone.
     for endpoint in STAGES:
@@ -443,9 +491,12 @@ def main():
     parser.add_argument("--plan-inspect", type=Path, required=True)
     parser.add_argument("--inspector", type=Path, required=True)
     parser.add_argument("--finalizer", type=Path, required=True)
+    parser.add_argument("--reporter", type=Path, required=True)
     parser.add_argument("--resources", type=Path, required=True)
+    parser.add_argument("--synthesis-only", action="store_true",
+                        help="run only the fresh multi-SRAM synthesis and no-restart regression")
     args = parser.parse_args()
-    for name in ("emitter", "cli", "plan_inspect", "inspector", "finalizer"):
+    for name in ("emitter", "cli", "plan_inspect", "inspector", "finalizer", "reporter"):
         setattr(args, name, getattr(args, name).resolve())
     with tempfile.TemporaryDirectory(prefix="sram-segmented-", dir="/tmp/opencode") as tmp:
         verify(args, Path(tmp))

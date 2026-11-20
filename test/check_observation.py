@@ -153,6 +153,19 @@ def verify(cli, consumer, flow, root, historical=False):
             value['recorded_at'] = '2026-01-01T00:00:00.000000Z'
             check(fixtures[-1][:index] + [sign(value)])
         base = fixtures[1]
+        # A terminal synthesis publication and a physical SRAM publication have
+        # narrower capabilities than a generic synthesis checkpoint. Re-sign the
+        # event so we exercise lifecycle semantics, not merely hash rejection.
+        index = next(i for i, event in enumerate(base) if event["event"] == "published")
+        for supported, targets, counter in (
+                (False, [], "accepted"), (True, ["floorplan"], "accepted"),
+                (True, [], "rejected"), (False, ["floorplan"], "rejected"),
+                (True, ["placement"], "rejected")):
+            event = copy.deepcopy(base[index])
+            event["data"]["artifact"].update(restart_supported=supported, restart_targets=targets)
+            before = counts[counter]
+            check(base[:index] + [sign(event)])
+            assert counts[counter] == before + 1
         replacements = [None, True, False, 0, -1, 1.0, '', 'wrong', [], {}]
         # Re-sign each malformed candidate so facts are checked beyond hashing.
         for index, record in enumerate(base):

@@ -15,7 +15,7 @@ type t = { workspace : string; project : string; pdk_root : string; store : stri
     verify_inputs : unit -> (unit, string) result;
     verify_resolved : string -> (unit, string) result;
    failure_exit_code : B.operation -> T.result -> int option }
-let bridge_sha256 = "84014826e59384e8977e6249186aafe956af39894470ee39f44a6d348f8959f3"
+let bridge_sha256 = "cbaf6214ced35a399f4c638bf6c9e2509bee46361bd102aecf22536815569782"
 let protocol_sha256 = "eb6490db856f551ffe2ab35ea872bdc85c86801339e67a9d5bdf427238b25ae1"
 let macro_runtime_sha256 = "82139f81dceb2a24398f7834cacfe8c85ac26823f643f8124db65925cf42a0c5"
 exception Service_error of Runner.error
@@ -257,9 +257,10 @@ let invoke t action (context:(unit,checkpoint) Runner.context) = protect (fun ()
   let candidate = t.project ^ "/candidates/" ^ tag in
    let request,process,reply,transport_record,transport_result = call t ~operation:B.Execute_segment ~boundary ~candidate ~source tag in
    let report = checked (Segment_report.of_json ~request (read_json (candidate ^ "/segment.json"))) in
-   let macro=Macro_contract.active (read_json (t.project ^ "/manifest.json")) in
-   let reported=match report.raw with J.Object xs -> List.mem_assoc "macro_profile" xs | _ -> false in
-   if macro<>reported then fail "macro segment profile missing or unexpected";
+   let manifest=read_json (t.project ^ "/manifest.json") in
+   let expected=if Macro_contract.active manifest then Some (str (Macro_contract.profile manifest)) else None in
+   let reported=match report.raw with J.Object xs -> List.assoc_opt "macro_profile" xs | _ -> None in
+   if expected<>reported then fail "macro segment profile missing or unexpected";
    let segment = {request;process;reply;report;transport_record;transport_result} in
   Hashtbl.add t.completed candidate segment;
   Runner.Segment_result (segment,{Runner.status=Completed;exit_code=0;error=None}))

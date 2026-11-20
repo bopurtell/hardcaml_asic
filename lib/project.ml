@@ -34,6 +34,21 @@ type t =
   ; hardware_variant : Hardware_variant.t option
   }
 
+let validate_macro_limits policy (technology : Resource.Technology.t) =
+  match Resource.Policy.limited_macro_names policy with
+  | [] -> Ok ()
+  | names ->
+    let known =
+      String.Set.of_list (List.map technology.resource_mappings ~f:(fun m -> m.macro.name))
+    in
+    match List.filter names ~f:(fun name -> not (Set.mem known name)) with
+    | [] -> Ok ()
+    | unknown_macros ->
+      Or_error.error_s
+        [%message "macro limits name macros not mapped by the project technology"
+            ~technology:(technology.name : string) (unknown_macros : string list)]
+;;
+
 let create
     ~name
     ~metadata
@@ -56,7 +71,6 @@ let create
 
     Or_error.t is the Jane result type; declare "Ok x or Error.t" in layman's terms. More to it but not that we care about right here.
 
-    TODO: Validate target and policy; currently staved for later.
   *)
   let%map.Or_error () =
     (* Or_err -> checks for error returns on all members; this doesn't short circuit like a more naive item might; *)
@@ -71,6 +85,7 @@ let create
       ; Elaboration.Metadata. validate      metadata  (* nonblank title *)
       ; Platform.Clock.       validate_list clocks    (* ports nonempty, periods > 0, no dups *)
       ; Flow.Config.          validate      flow      (* librelane overrides formed correctly *)
+      ; validate_macro_limits policy target.Platform.Target.technology
       ]
 
     (* if there was an error, tag it with where the error belongs in the project scheme *)

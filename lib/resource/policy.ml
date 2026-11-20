@@ -131,6 +131,7 @@ end
 type t =
   { default : Requirement.t option
   ; rules : Rule.t list
+  ; macro_limits : int Map.M(String).t [@sexp.omit_if Map.is_empty]
   }
 [@@deriving sexp_of]
 
@@ -138,7 +139,7 @@ type t =
    is declared, well before any design constructor, so there is nothing to thread it
    through;
 
-   The one check: the same selector cannot appear in two rules. This is rejected even if
+   The same selector cannot appear in two rules. This is rejected even if
    both rules ask for the same requirement, since two rules with the same selector always
    tie on precedence and [lookup] would have no way to pick between them;
 
@@ -147,7 +148,7 @@ type t =
     Requirement : what will the project accept - derived from a policy
     Tech Map    : what macros exist, based on the request for exact equality
 *)
-let create ?default rules =
+let create ?default ?(macro_limits = []) rules =
   match
     List.find_a_dup rules ~compare:(fun (a : Rule.t) b ->
       Selector.compare a.selector b.selector)
@@ -157,8 +158,22 @@ let create ?default rules =
       [%message
         "ambiguous implementation policy: selector appears in more than one rule"
           (selector : Selector.t)]
-  | None -> Ok { default; rules }
+  | None ->
+    let%map.Or_error macro_limits =
+      List.fold_result macro_limits ~init:(Map.empty (module String))
+        ~f:(fun limits (macro, limit) ->
+          if String.is_empty (String.strip macro) || limit < 0
+          then Or_error.error_s [%message "expected a macro name and a nonnegative instance limit"
+                                           (macro : string) (limit : int)]
+          else if Map.mem limits macro
+          then Or_error.error_s [%message "duplicate macro instance limit" (macro : string)]
+          else Ok (Map.set limits ~key:macro ~data:limit))
+    in
+    { default; rules; macro_limits }
 ;;
+
+let macro_limit t macro = Map.find t.macro_limits macro
+let limited_macro_names t = Map.keys t.macro_limits
 
 (* grab the rules out of a policy; Private.finalize uses this for its unused rule check *)
 let rules t = t.rules

@@ -6,6 +6,8 @@ module J = Flow.Plan_json
 let generated manifest =
   match List.Assoc.find (match manifest with `Assoc xs -> xs | _ -> []) "macro_contract" ~equal:String.equal with
   | None -> []
+  | Some contract when J.equal (J.get contract "schema_version") (`Int 1) ->
+    Flow.Stock_sram_synthesis.generated ~manifest ~contract
   | Some contract ->
     let require condition message = if not condition then J.fail ("named SRAM: " ^ message) in
     require (J.equal (J.get contract "schema_version") (`Int 2) &&

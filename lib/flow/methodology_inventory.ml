@@ -114,6 +114,12 @@ let verify ~manifest:m ~configuration =
      let macro_inputs =
        match List.Assoc.find (match m with `Assoc xs -> xs | _ -> []) "macro_contract" ~equal:String.equal with
        | None -> []
+       | Some c when J.equal (J.get c "schema_version") (`Int 1) ->
+         let expected = Stock_sram_synthesis.generated ~manifest:m ~contract:c in
+         List.iter expected ~f:(fun (key,value) ->
+           if not (J.equal value (J.get (J.get m "generated_settings") key) && J.equal value (J.get config key))
+           then J.fail ("named SRAM synthesis generated link mismatch: " ^ key));
+         expected
        | Some c ->
          if not (J.equal (J.get c "schema_version") (`Int 2)) then J.fail "named SRAM requires schema2 Hardening";
          let stock="RM_IHPSG13_1P_256x16_c2_bm_bist" in

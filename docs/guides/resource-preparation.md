@@ -5,6 +5,40 @@ without emitting a bundle or running EDA. A project-owned executable selects and
 constructs its OCaml project; the ASIC execution library retains the operation.
 The generic CLI reads that historical result without loading project code.
 
+## Limit the number of selected macro instances
+
+Pass a budget to the project's resource policy when only some eligible memories
+should use a particular technology macro. For example, to use the stock SRAM for
+the first matching memory and allow flops for the rest:
+
+```ocaml
+let policy =
+  Hardcaml_asic.Resource_policy.create
+    ~default:Exact_or_flop_fallback
+    ~macro_limits:[ "RM_IHPSG13_1P_256x16_c2_bm_bist", 1 ]
+    []
+  |> Core.Or_error.ok_exn
+```
+
+The key is the **technology macro name**, not a resource instance path. Each
+selection of that macro consumes one slot, in resource **registration order**.
+With the policy above, the second matching memory selects flops with reason
+`Budget_exhausted { macro; limit = 1 }`. A shape with no matching macro instead
+gets the ordinary `Flop_fallback` reason. An explicit `Flops` rule consumes no
+slot. An `Exact` rule fails elaboration if its macro has no slot left: the policy
+does not reserve capacity for later instances. If a particular memory must get
+the macro, register it first or use rules to select flops for its competitors.
+
+Unlisted macros have no limit. A zero limit permits no selections of that
+macro; negative limits, blank names and duplicate keys are errors at policy construction.
+`Project.create` rejects any limit whose name does not exactly match a macro in
+the target technology. A known macro may have a limit even if the design never uses it.
+Every elaboration starts with fresh counts, including simulation, where policy
+selection is still recorded although the memory uses its behavioral model.
+The limit controls selection; it is not evidence that a selected macro fits or
+survives synthesis. See [resource realization](resource-realization.md) for that
+distinction and [segmented SRAM](segmented-sram.md) for qualified configurations.
+
 ## Consumer entry point
 
 Link the executable against `hardcaml_asic.execution` (and its ordinary project

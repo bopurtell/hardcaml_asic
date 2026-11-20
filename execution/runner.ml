@@ -19,16 +19,19 @@ type occurrence = { occurrence_id : string; action_key : string; status : status
   exit_code : int option; duration_seconds : float; best_effort : bool; error : string option; verdict : status option }
 type step = { operation : Action.operation; status : status; exit_code : int;
   duration_seconds : float; best_effort : bool; error : string option }
-type reference = { boundary : Stage.t; path : string; identity : string }
+type reference = { boundary : Stage.t; path : string; identity : string; restart_targets : Stage.t list }
 let reference ~boundary ~path ~identity =
   match Checkpoint.absolute_path path with
   | Error e -> Error e
   | Ok path ->
     if String.length identity <> 64 || not (String.for_all (function '0'..'9'|'a'..'f' -> true | _ -> false) identity)
     then Error "invalid publication identity"
-    else match J.string path with Error e -> Error (J.error_message e) | Ok _ -> Ok {boundary;path;identity}
+    else match J.string path with Error e -> Error (J.error_message e) | Ok _ ->
+      Ok {boundary;path;identity;restart_targets=(Stage.capability boundary).restart_targets}
+let of_checkpoint ~path (c : Checkpoint.t) =
+  {boundary=c.boundary;path;identity=c.identity;restart_targets=c.restart_targets}
 let of_checkpoint_publication (p : Checkpoint_publisher.publication) =
-  {boundary=p.checkpoint.boundary;path=p.path;identity=p.checkpoint.identity}
+  of_checkpoint ~path:p.path p.checkpoint
 let get = function Ok x -> x | Error e -> invalid_arg (J.error_message e)
 let str x = get (J.string x)
 let obj x = get (J.object_ x)
@@ -38,10 +41,19 @@ let opt f = function None -> J.null | Some x -> f x
 let reference_json (p : reference) =
   let cap = Stage.capability p.boundary in
   obj ["path",str p.path; "identity",str p.identity; "boundary",str (Stage.to_string p.boundary);
-       "restart_supported",J.bool (cap.restart_targets <> []);
-       "restart_targets",J.array (List.map (fun s -> str (Stage.to_string s)) cap.restart_targets);
+       "restart_supported",J.bool (p.restart_targets <> []);
+       "restart_targets",J.array (List.map (fun s -> str (Stage.to_string s)) p.restart_targets);
        "acceptance",str "not_evaluated"; "closure_scope",str "path_bound";
        "tested_image_id",str cap.tested_image_id]
+(* A reference carries no profile field; whitelist published profile-specific
+   restrictions as pairs, never as two independently optional fields. *)
+let reference_matches ?(equal=(=)) ~legacy_routing (p:reference) raw =
+  let choices = match p.boundary with
+    | Stage.Routing when legacy_routing -> [[Stage.Signoff]]
+    | Stage.Synthesis -> [p.restart_targets; [Stage.Floorplan]; []]
+    | Stage.Timing -> [p.restart_targets; []]
+    | _ -> [p.restart_targets] in
+  List.exists (fun restart_targets -> equal raw (reference_json {p with restart_targets})) choices
 type 'checkpoint publication = { evidence : reference; checkpoint : 'checkpoint }
 type 'checkpoint source = { boundary : Stage.t; checkpoint : 'checkpoint }
 type ('run, 'segment) outcome = Run_result of 'run * completion | Segment_result of 'segment * completion

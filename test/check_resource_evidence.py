@@ -161,7 +161,8 @@ def main():
             identity=hashlib.sha256(json.dumps(manifest,separators=(',',':')).encode()).hexdigest()
             write(root/'project/manifest.json',dict(identity=identity,**manifest))
             record.update(build_identity=identity,manifest_sha256=sha(root/'project/manifest.json'));write(root/'run.json',record)
-        for req,reason in [('Flops','Explicit_flops'),('Exact_or_flop_fallback','(Flop_fallback (no_exact_mapping_in fixture))')]:
+        for req,reason in [('Flops','Explicit_flops'),('Exact_or_flop_fallback','(Flop_fallback (no_exact_mapping_in fixture))'),
+                           ('Exact_or_flop_fallback','(Budget_exhausted (macro MAC) (limit 0))')]:
             manifest['resources'][0].update(requirement=req,selection=f'((implementation Flops) (reason {reason}))')
             bind();row=invoke(root)['observations'][0]['resources'][0]
             assert row['status']=='unresolved' and row['realized']['status']=='unavailable'
@@ -182,6 +183,18 @@ def main():
         structured=invoke(root)
         assert structured['coverage']=='resource_snapshot'
         assert structured['observations'][0]['resources'][0]['status']=='unresolved'
+        old.update(requirement='Exact_or_flop_fallback',selection='((implementation Flops) (reason (Budget_exhausted (macro MAC) (limit 0))))')
+        row.update(requirement='exact_or_flop_fallback')
+        row['selection']['reason']=dict(kind='budget_exhausted',macro='MAC',limit=0)
+        bind()
+        assert invoke(root)['resource_inventory'][0]['selection']==row['selection']
+        forged=invoke(root)
+        for inv in [forged['resource_inventory'][0],forged['observations'][0]['resources'][0]]:
+            inv['selection']['reason']['limit']=2
+            inv['inventory_record']['selection']['reason']['limit']=2
+        path=root/'invalid-budget.json';write(path,forged)
+        assert consume('validate',path)!='valid'
+        row['selection']['reason']['macro']='other';bind();invoke(root,2)
         manifest['resource_snapshot']['schema_version']=999;bind();invoke(root,2)
         record['build_identity']='stale';write(root/'run.json',record);invoke(root,2)
     print(f'PT.5 resource evidence: {checks} public CLI cases plus collection/report/archive/strict-reader assertions passed')
