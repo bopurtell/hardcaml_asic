@@ -27,22 +27,39 @@ let chip_list () =
 let catalog = Generated.create ~default_flow:"standard"
     ~default_profile:"balanced" |> checked
 
+let request_assignment argument =
+  match String.lsplit2 argument ~on:'=' with
+  | Some (key, value) when not (String.is_empty key || String.is_empty value) ->
+    let scalar = match value with
+      | "true" -> `Bool true
+      | "false" -> `Bool false
+      | value -> `String value
+    in
+    Flow.Parameter.of_scalar ~key scalar |> checked
+  | _ -> failwith "Expected --set KEY=VALUE"
+
 let flow command args =
   let values = String.Table.create () in
+  let accepts_request = String.equal command "plan" || String.equal command "emit" in
   let keys = ["--chip"; "--variant"] @ (match command with
     | "list" -> []
     | "describe" -> ["--flow"]
     | "plan" | "emit" -> ["--flow"; "--profile"; "--endpoint"; "--source-root"]
       @ (if String.equal command "emit" then ["--results-root"; "--expected-plan-identity"] else [])
     | _ -> failwith "Expected flow list, describe, plan or emit") in
-  let rec parse = function
-    | [] -> ()
-    | "--json" :: rest -> parse rest
+  let rec parse request = function
+    | [] -> List.rev request
+    | "--json" :: rest ->
+      Hashtbl.add_exn values ~key:"--json" ~data:""; parse request rest
+    | "--set" :: value :: rest
+      when accepts_request && not (String.is_prefix value ~prefix:"--") ->
+      parse (value :: request) rest
+    | "--set" :: _ when accepts_request -> failwith "Expected --set KEY=VALUE"
     | k :: v :: rest when List.mem keys k ~equal:String.equal && not (String.is_prefix v ~prefix:"--") ->
-      Hashtbl.add_exn values ~key:k ~data:v; parse rest
+      Hashtbl.add_exn values ~key:k ~data:v; parse request rest
     | _ -> failwith "Unknown or incomplete flow option"
   in
-  parse args;
+  let request = parse [] args in
   let get k = Hashtbl.find values k in
   let require k v = Option.iter (get k) ~f:(fun s ->
     if not (String.equal s v) then failwith ("Unknown selection: " ^ s)) in
@@ -74,7 +91,9 @@ let flow command args =
   | _ ->
     let selection = Flow.Selection.create ?flow:(get "--flow") ?profile:(get "--profile") () |> checked in
     let endpoint = Hashtbl.find_exn values "--endpoint" |> Flow.Stage.of_string |> checked in
-    let request = Flow.Parameter.check_assignments ~configurable:[] [] |> checked in
+    (* The selected catalog checks duplicates and whether this flow allows the
+       typed keys. The forwarding path above preserves the original argv. *)
+    let request = List.map request ~f:request_assignment in
     let source_root = Option.value (get "--source-root") ~default:(Sys_unix.getcwd ()) in
     let prepared = Methodology_plan.prepare ~catalog ~selection ~endpoint ~request ~catalog_inputs:Generated.source_inputs
       ?expected_plan_identity:(get "--expected-plan-identity") Chip.chip_target ~source_root |> checked in

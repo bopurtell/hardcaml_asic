@@ -118,7 +118,9 @@ changes can make a preview stale; preview again rather than bypassing the check.
 Typed overrides use repeatable `--set KEY=VALUE`, for example
 `--set SYNTH_ABC_BUFFERING=true`. Use identical overrides on preview and run.
 Unknown keys, duplicate assignments, invalid enums and nonboolean buffering
-values are rejected.
+values are rejected. Generated starter CLIs accept the same options on
+`flow plan` and `flow emit`. Quote enum assignments containing spaces, for
+example `--set 'SYNTH_STRATEGY=DELAY 1'`.
 
 With no selection flags, the declared catalog default is used. An explicit flow
 without a profile uses that flow's default profile. A profile without a flow is

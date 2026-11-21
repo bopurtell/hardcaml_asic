@@ -141,7 +141,7 @@ Historical records are never retrofitted with hardware metadata.
 Firmware size and fetch count remain unsupported for the memory protocol below.
 There is no automatic winner, experiment scheduler or Protemu configuration selection.
 The provider remains headless; the separately delivered
-[Workbench integration](../../../silver/docs/pt8_workloads.md) consumes
+[Silver Workloads](../../../silver/docs/workloads.md) consumes
 its public results and comparison decisions.
 The [PT.8 queue](../phase_plan.md#pt8--reproducible-design-variant-comparisons)
 owns those remaining consumer/workload obligations.

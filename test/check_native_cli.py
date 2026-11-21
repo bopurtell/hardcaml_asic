@@ -16,6 +16,22 @@ def run(binary, args, cwd, **kwargs):
                           capture_output=True, **kwargs)
 
 
+def check_workbench_build(binary, root):
+    # A private Silver build must route to its own helper and resource tree.
+    context = root / '_build_workbench/default'
+    bindir = context / 'bin'
+    bindir.mkdir(parents=True)
+    cli = bindir / 'flow_cli.exe'
+    shutil.copy2(binary, cli)
+    helper = bindir / 'experimental_preflight.exe'
+    helper.write_text('#!/bin/sh\nprintf "%s\\n" "$@"\n')
+    helper.chmod(0o755)
+    result = run(cli, ['preflight', 'bundle', '--toolchain', 'tc'], root)
+    assert result.returncode == 0, result.stderr
+    args = result.stdout.splitlines()
+    assert args[args.index('--resources') + 1] == str(context / 'flow/hardcaml_asic_flow')
+
+
 def main():
     with tempfile.TemporaryDirectory(dir='/tmp/opencode', prefix='native-cli-') as tmp:
         root = Path(tmp)
@@ -23,6 +39,7 @@ def main():
         prefix = root / 'default'
         hardlink_prefix(REPO / '_build/install/default', prefix)
         binary = prefix / 'bin/hardcaml-asic-flow'
+        check_workbench_build(binary, root)
         package = prefix / 'lib/hardcaml_asic/flow/hardcaml_asic_flow'
         reference = copy_reference(REPO / 'flow', root / 'oracle', package.parent)
         activate(reference, package.parent)

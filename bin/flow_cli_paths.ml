@@ -21,7 +21,7 @@ let development () =
   Filename.basename exe="flow_cli.exe" &&
   Filename.basename (Filename.dirname (Filename.dirname exe))="default" &&
    List.mem (Filename.basename (Filename.dirname (Filename.dirname (Filename.dirname exe))))
-      ["_build";"_build_pt8_workloads";"_build_pt8_workbench"]
+       ["_build";"_build_workbench";"_build_pt8_workloads";"_build_pt8_workbench"]
 let resources () =
   let bin=Filename.dirname (executable ()) in
   (* Only the development build has an explicit build-tree layout. Installed

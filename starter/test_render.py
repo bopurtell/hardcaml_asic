@@ -141,6 +141,11 @@ let () =
         assert all(p.read_bytes() == content for p, content in before.items())
         def query(*args):
             return json.loads(command("exec", target, "--", *args, "--json"))
+        def reject(expected, *args):
+            result = subprocess.run(["dune", "exec", "--root", ".", target, "--", *args],
+                                    cwd=root, text=True, capture_output=True)
+            assert result.returncode != 0 and not result.stdout, (args, result)
+            assert expected in result.stderr, (args, result.stderr)
         assert query("chip", "list")["default_chip"] == "led-demo"
         assert [x["id"] for x in query("chip", "list")["chips"]] == ["led-demo"]
         catalog = {"schema_version": 1, "default_target": "led-demo", "targets": [
@@ -172,6 +177,31 @@ let () =
         assert [e["methodology"]["id"] for e in query("flow", "list")["declaration"]["entries"]] == ["standard"]
         assert subprocess.run(["dune", "exec", "--root", ".", target, "--", "flow", "list", "--chip", "wrong"],
                               cwd=root, capture_output=True).returncode != 0
+        request = ["--set", "SYNTH_STRATEGY=DELAY 1", "--set", "SYNTH_ABC_BUFFERING=true"]
+        routed = ["--flow", "standard", "--profile", "balanced", "--endpoint", "synthesis",
+                  "--source-root", str(root), *second]
+        for operation in ("plan", "emit"):
+            for options, message in [
+                (["--set"], "Expected --set KEY=VALUE"),
+                (["--set", "--json"], "Expected --set KEY=VALUE"),
+                (["--set", "SYNTH_STRATEGY"], "Expected --set KEY=VALUE"),
+                (["--set", "=true"], "Expected --set KEY=VALUE"),
+                (["--set", "SYNTH_STRATEGY="], "Expected --set KEY=VALUE"),
+                (["--set", "NOT_A_KEY=true"], "NOT_A_KEY"),
+                (["--set", "SYNTH_STRATEGY=delay 1"], "delay 1"),
+                (["--set", "SYNTH_ABC_BUFFERING=1"], "requires a boolean"),
+                (["--set", "SYNTH_ABC_BUFFERING=True"], "requires a boolean"),
+                (["--set", 'SYNTH_ABC_BUFFERING="true"'], "requires a boolean"),
+                ([*request, "--set", "SYNTH_STRATEGY=DELAY 1"], "Duplicate configurable parameter"),
+                (["--flow", "standard"], "--flow"),
+                (["--json", "--json"], "--json"),
+            ]:
+                reject(message, "flow", operation, *routed, *options)
+            assert not (root / "_flow_results").exists()
+        reject("Unknown or incomplete flow option", "flow", "list", *second, *request)
+        reject("Unknown or incomplete flow option", "flow", "describe",
+               "--flow", "standard", *second, *request)
+
         if os.environ.get("STARTER_TEST_CHECKOUT_DIR"):
             os.environ["GIT_OPTIONAL_LOCKS"] = "0"
             selection = ["--flow", "standard", "--profile", "balanced", "--endpoint",
@@ -184,3 +214,27 @@ let () =
                             plan["plan_identity"], "--results-root", str(root / "results"))
             assert receipt["plan_identity"] == plan["plan_identity"]
             assert Path(receipt["output_dir"]).is_dir()
+
+            # Preview through chip A's executable, forwarding to B. Both values
+            # must be typed and participate in the frozen plan / emitted bundle.
+            plan = query("flow", "plan", *routed, *request)
+            assert plan["plan_identity"] != plan_b["plan_identity"]
+            assert query("flow", "plan", *routed, *request[2:], *request[:2]) == plan
+            config = json.loads(plan["configuration_bytes"])
+            assert config["SYNTH_STRATEGY"] == "DELAY 1"
+            assert config["SYNTH_ABC_BUFFERING"] is True
+            assert not (root / "_flow_results").exists()
+
+            changed_request = [*request[:-1], "SYNTH_ABC_BUFFERING=false"]
+            changed = query("flow", "plan", *routed, *changed_request)
+            assert json.loads(changed["configuration_bytes"])["SYNTH_ABC_BUFFERING"] is False
+            assert changed["plan_identity"] != plan["plan_identity"]
+            results = root / "override-results"
+            emit = [*routed, "--expected-plan-identity", plan["plan_identity"], "--results-root", str(results)]
+            reject("stale methodology plan identity", "flow", "emit", *emit, *changed_request)
+            assert not results.exists(), "a stale assignment created a results directory"
+            receipt = query("flow", "emit", *emit, *request)
+            assert receipt["plan"] == plan
+            assert receipt["plan_identity"] == plan["plan_identity"]
+            assert receipt["bundle_identity"] == plan["bundle_identity"]
+            assert json.loads((Path(receipt["output_dir"]) / "src/config.json").read_text()) == config
