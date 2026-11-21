@@ -38,7 +38,8 @@ with tempfile.TemporaryDirectory(dir=os.environ.get("STARTER_TEST_CHECKOUT_DIR")
     paths = {f["path"] for f in data["files"]}
     assert len(paths) == len(data["files"])
     assert paths == {"dune-project"} | {"asic_led-demo/" + path for path in
-                                        ["README.md", "chip.ml", "project.ml", "dune", "rtl.ml", "test_chip.ml"]}
+                                        ["README.md", "chip.ml", "project.ml", "dune", "rtl.ml", "test_chip.ml",
+                                         "flows/dune", "flows/flow_standard.ml"]}
     result = invoke("render-target", "--name", "led-demo")
     result.check_returncode()
     nested = json.loads(result.stdout)["files"]
@@ -150,7 +151,7 @@ let () =
         assert [(x["id"], x["default_variant"]) for x in discovery["chips"]] == [
             ("led-demo", "default"), ("led_demo", "default")]
         # Give B an observable flow label to prove it answered the dispatch.
-        b_cli = root / "asic_led_demo/project.ml"
+        b_cli = root / "asic_led_demo/flows/flow_standard.ml"
         b_cli.write_text(b_cli.read_text().replace('~label:"Standard"', '~label:"B only"'))
         command("build", "asic_led_demo/project.exe")
         second = ["--chip", "led_demo", "--variant", "default"]
@@ -158,6 +159,17 @@ let () =
             "exec", target, "--", "flow", "list", "--json", *second)))
         assert query("flow", "list")
         assert query("flow", "describe", "--flow", "standard")
+        # One new entry in B: no Dune/catalog edits and no registration in A.
+        descriptor = json.loads(invoke("describe-flow-authoring").stdout)
+        recipe_id = descriptor["recipes"][0]["id"]
+        new = json.loads(invoke("render-flow", json.dumps(dict(
+            catalog=query("flow", "list", *second), owner="asic_led_demo", registered=True,
+            flow_id="quick", profile_id="baseline", endpoints=["synthesis"], recipe=recipe_id))).stdout)
+        assert [f["path"] for f in new["files"]] == ["asic_led_demo/flows/flow_quick.ml"]
+        materialize(new["files"])
+        command("build", "asic_led_demo/project.exe")
+        assert query("flow", "describe", "--flow", "quick", *second)["entry"]["default_profile"] == "baseline"
+        assert [e["methodology"]["id"] for e in query("flow", "list")["declaration"]["entries"]] == ["standard"]
         assert subprocess.run(["dune", "exec", "--root", ".", target, "--", "flow", "list", "--chip", "wrong"],
                               cwd=root, capture_output=True).returncode != 0
         if os.environ.get("STARTER_TEST_CHECKOUT_DIR"):

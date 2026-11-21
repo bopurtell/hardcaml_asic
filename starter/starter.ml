@@ -18,6 +18,8 @@ let usage =
   \         Eight-bit combinational Block.create: ui_in to uo_out; clock/reset unused.\n\
   \       hardcaml-asic-starter render-ip --name NAME --template empty|sample\n\
   \       hardcaml-asic-starter render-module --name NAME\n\
+  \       hardcaml-asic-starter describe-flow-authoring\n\
+  \       hardcaml-asic-starter render-flow|render-profile 'JSON REQUEST'\n\
    Target names match [a-z][a-z0-9_-]{0,63}; IP and module names match \
    [a-z][a-z0-9_]{0,63}."
 ;;
@@ -32,6 +34,7 @@ let target_files ?library name =
       (String.split_on_char '-' (String.concat "_u" (String.split_on_char '_' name)))
   in
   let chip_lib = "chip_target_" ^ id in
+  let flows = chip_lib ^ "_flows" in
   let consumer contents =
     Printf.sprintf
       "module Chip = %s.Chip\n\n%s"
@@ -100,7 +103,7 @@ Run from the enclosing project root. RTL and simulation need no PDK.
           {|(library
  (name %s)
  (modules chip)
- (libraries core hardcaml hardcaml_asic%s))
+ (libraries core hardcaml hardcaml_asic %s%s))
 
 (test
  (name test_chip)
@@ -118,6 +121,7 @@ Run from the enclosing project root. RTL and simulation need no PDK.
  (libraries %s core core_unix.sys_unix hardcaml_asic unix yojson))
 |}
           chip_lib
+          flows
           (Option.fold ~none:"" ~some:(( ^ ) " ") library)
           chip_lib
           (Option.fold ~none:"" ~some:(( ^ ) " ") library)
@@ -154,7 +158,7 @@ let target_id = %S
 
 let chip_target =
   Hardcaml_asic.Chip_target.create
-    ~source_inputs:[%s]
+    ~source_inputs:(%s.Generated.source_inputs @ [%s])
     ~name:"%s"
     ~metadata:{ title = "%s"; author = "Starter"; description = %S }
     ~design:(module Design)
@@ -170,11 +174,14 @@ let chip_target =
           design
           output
           name
+          (String.capitalize_ascii flows)
           sources
           id
           name
           description )
-    ; "project.ml", consumer Project_template.contents
+    ; "project.ml", consumer ("module Generated = " ^ String.capitalize_ascii flows ^ ".Generated\n" ^ Project_template.contents)
+    ; "flows/dune", Collection.stanza ~root:(dir ^ "/flows") ~library:flows
+    ; "flows/flow_standard.ml", Flow_authoring.flow_source ~id:"standard" ~profile:"balanced" ~endpoints:"Flow.Stage.all"
     ; ( "rtl.ml"
       , consumer
           {|open Core
@@ -293,22 +300,27 @@ let () =
   |> List.map (fun (path, contents) -> "ip/" ^ name ^ "/" ^ path, contents)
 ;;
 
-let render entries =
+let render ?(extra = []) entries =
   let file (path, contents) =
     `Assoc [ "path", `String path; "contents", `String contents ]
   in
   `Assoc
-    [ "schema_version", `Int 1
+    ([ "schema_version", `Int 1
     ; "provider", `String "hardcaml_asic"
     ; "version", `String "0.1.0"
     ; "files", `List (List.map file entries)
-    ]
+    ] @ extra)
   |> Yojson.Basic.to_string
   |> print_endline
 ;;
 
 let () =
   match Array.to_list Sys.argv with
+  | _ :: "generate-collection" :: root :: paths -> Collection.generate root paths
+  | [_; "describe-flow-authoring"] -> print_endline (Yojson.Safe.to_string Flow_authoring.describe)
+  | [_; ("render-flow" | "render-profile" as command); json] ->
+    (try let files, extra = Flow_authoring.render ~valid_name command json in render ~extra files
+     with e -> prerr_endline (Printexc.to_string e); exit 2)
   | [ _; ("--help" | "-h") ] -> print_endline usage
   | [ _; "render"; "--name"; name ] when valid_name name ->
     render

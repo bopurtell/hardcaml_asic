@@ -20,9 +20,33 @@ configuration-changing checkpoint reuse.
 | `balanced` (default) | `AREA 0` | `false` |
 | `synth_delay` | `DELAY 1` | `false` |
 
-Declarations live in its `asic/flow_catalog.ml` and `asic/flow_profiles.ml` and
-are part of the declared input inventory. They use the provider's typed catalog
-API, rather than reimplementing parameter validation or stage sequencing.
+FIFO's `asics/fifo_demo/flows/flow_standard.ml` declares the methodology and
+uses `standard_profiles.ml` for its two built-in profiles. In that directory,
+only direct `flow_*.ml` modules are entries. Each exports
+`create ~additional_profiles` and returns a checked `Flow.Catalog.Entry.t`.
+`flows/<flow-id>/profiles/*.ml` modules export `create ()`, returning one
+checked `Flow.Profile.t`. `flows/dune` opts this collection into provider
+codegen. The generator orders modules by path and emits wiring and the source
+inventory under `_build`. A helper module does not register an entry.
+`project/flow_catalog.ml` still owns both explicit defaults.
+
+Profile-directory registration is a separate, per-entry opt-in. The entry
+must include the exact standalone line `(* hardcaml-asic profile directory v1 *)`
+and combine `additional_profiles` with its inline profiles. The generated
+starter, newly rendered flows and FIFO already do this. An unmarked
+hand-written entry still registers its methodology in the collection. Its
+profile directory is ignored; Duplicate Profile returns a declaration snippet
+for manual registration and leaves the source unchanged.
+
+New chip targets have the same convention. An authoring client queries the
+chosen chip's `flow list --json` and the installed starter's
+`describe-flow-authoring`. `render-flow` and `render-profile` accept one JSON
+request argument and describe an exclusive, single-file addition. A profile
+copy contains the source profile's **explicit** assignments, with validated
+edits; a null edit drops an assignment. It does not materialize methodology
+defaults. For a manual catalog these commands return a snippet and no files.
+The host previews/applies the description; rebuild and list the owning chip
+to verify registration. Creating a module neither selects a flow nor runs it.
 
 The initial typed parameter surface is synthesis strategy (`AREA 0` through
 `AREA 3`, `DELAY 0` through `DELAY 4`) and boolean ABC buffering. Other LibreLane

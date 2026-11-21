@@ -24,15 +24,7 @@ let chip_list () =
   print (`Assoc ["schema_version", `Int 1; "default_chip", `String default;
                  "chips", `List (List.map ids ~f:chip)])
 
-let entry =
-  let methodology = Flow.Methodology.create ~id:"standard" ~label:"Standard"
-    ~description:"LibreLane physical-stage prefixes" ~backend_recipe:Librelane_classic_v1
-    ~endpoints:Flow.Stage.all ~configurable:[] ~defaults:[] |> checked in
-  let profile = Flow.Profile.create ~id:"balanced" ~label:"Balanced"
-    ~description:"Default chip target implementation" ~assignments:[] |> checked in
-  Flow.Catalog.Entry.create ~methodology ~profiles:[profile] ~default_profile:"balanced" |> checked
-
-let catalog = Flow.Catalog.create ~entries:[entry] ~default_flow:"standard"
+let catalog = Generated.create ~default_flow:"standard"
     ~default_profile:"balanced" |> checked
 
 let flow command args =
@@ -73,13 +65,18 @@ let flow command args =
   require "--variant" "default";
   match command with
   | "list" -> print (Flow_spec.list_to_yojson catalog)
-  | "describe" -> require "--flow" "standard"; print (Flow_spec.describe_to_yojson entry)
+  | "describe" ->
+    let id = Hashtbl.find_exn values "--flow" in
+    let entry = Flow.Catalog.entries catalog |> List.find ~f:(fun e ->
+      String.equal (Flow.Selection.Id.to_string (Flow.Methodology.id (Flow.Catalog.Entry.methodology e))) id)
+      |> Option.value_exn ~message:("Unknown flow ID " ^ id) in
+    print (Flow_spec.describe_to_yojson entry)
   | _ ->
     let selection = Flow.Selection.create ?flow:(get "--flow") ?profile:(get "--profile") () |> checked in
     let endpoint = Hashtbl.find_exn values "--endpoint" |> Flow.Stage.of_string |> checked in
     let request = Flow.Parameter.check_assignments ~configurable:[] [] |> checked in
     let source_root = Option.value (get "--source-root") ~default:(Sys_unix.getcwd ()) in
-    let prepared = Methodology_plan.prepare ~catalog ~selection ~endpoint ~request ~catalog_inputs:[]
+    let prepared = Methodology_plan.prepare ~catalog ~selection ~endpoint ~request ~catalog_inputs:Generated.source_inputs
       ?expected_plan_identity:(get "--expected-plan-identity") Chip.chip_target ~source_root |> checked in
     let plan = Methodology_plan.Prepared.plan prepared in
     if String.equal command "plan" then print (Methodology_plan.to_yojson plan)

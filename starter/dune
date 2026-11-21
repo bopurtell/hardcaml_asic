@@ -2,7 +2,7 @@
  (name starter)
  (public_name hardcaml-asic-starter)
  (package hardcaml_asic)
- (libraries yojson))
+ (libraries yojson hardcaml_asic))
 
 (rule
  (target project_template.ml)
