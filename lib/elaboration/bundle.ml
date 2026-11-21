@@ -673,7 +673,10 @@ let render
 
   (* Step 4; the commit checked out, NOT where the inputs are read from, which is the
      working tree (so dirty files are copied as they are) *)
-  let%bind.Or_error source_revision = run_git source_root [ "rev-parse"; "HEAD" ] in
+  let%bind.Or_error source_revision =
+    run_git source_root [ "rev-parse"; "HEAD" ]
+    |> Or_error.tag ~tag:"Bundle source provenance requires a Git checkout with an initial commit (HEAD)"
+  in
 
   (* Step 5; (path, bytes, porcelain status) per input; status is "" for a clean tracked
      file;

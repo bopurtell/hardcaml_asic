@@ -90,9 +90,62 @@ dune exec ./%s/project.exe -- flow list --json
 ```
 
 Run from the enclosing project root. RTL and simulation need no PDK.
+
+## Preview and reproduce synthesis
+
+Planning records Git provenance. Before planning a newly created project,
+make an initial Git commit with `dune-project`, this chip's source directory
+(including `flows/`), any referenced IP, and `hardcaml-asic-targets.json` if
+present. Do not commit `_build/`, `_flow_results/`, `_flow_tools`, `.dev/` or
+local Silver state. For headless replay, start from a clean clone of the same
+commit. Silver and its `.workbench/` configuration are not needed.
+
+Use the same OCaml switch, installed `hardcaml_asic` tools and libraries, and
+provisioned toolchain for both runs. Set `ASIC_TOOLCHAIN` to its absolute path.
+Provision with `hardcaml-asic-flow provision --toolchain "$ASIC_TOOLCHAIN"` or
+add `--check` to verify existing tools without provisioning again. The commands
+below also require `jq` and a reachable Docker daemon with the pinned LibreLane
+image. If launching through Silver instead, its generated configuration
+expects `_flow_tools` in the project root; a symlink to the provisioned
+toolchain is sufficient. Build the chip executable above before previewing.
+
+From the enclosing project root, preview and then explicitly run synthesis:
+
+```sh
+set -eu
+chip=./_build/default/%s/project.exe
+run=$(mktemp -d)
+tools=${ASIC_TOOLCHAIN:?Set ASIC_TOOLCHAIN to the provisioned toolchain}
+set -- --flow standard --profile balanced --endpoint synthesis --json
+
+"$chip" flow plan "$@" > "$run/plan.json"
+plan=$(jq -er '.plan_identity' "$run/plan.json")
+
+# Inspect plan.json before continuing. Only 'stages' below launches EDA.
+"$chip" flow emit "$@" --expected-plan-identity "$plan" \
+  --results-root "$run" > "$run/emission.json"
+bundle=$(jq -er '.output_dir' "$run/emission.json")
+hardcaml-asic-flow stages "$bundle" \
+  --methodology-plan "$run/plan.json" --expected-plan-identity "$plan" \
+  --workspace "$run/synthesis" --checkpoint-store "$run/synthesis/checkpoints" \
+  --python "$tools/.venv/bin/python" --support-tools "$tools/tt" \
+  --pdk-root "$tools/pdk" --json > "$run/execution.jsonl"
+
+execution=$(jq -ner '[inputs | select(.status == "completed" and .execution_file)]
+  | last | .execution_file' "$run/execution.jsonl")
+hardcaml-asic-flow report "$execution" --json > "$run/report.json"
+jq -er 'select(.execution.status == "completed" and .completion.physical == "synthesis")
+  | .checkpoints[] | select(.reference.boundary == "synthesis")
+  | .metrics[] | select(.raw_key == "design__instance__count" and .availability == "available")
+  | .value' "$run/report.json"
+```
+
+Compare mapped cell counts under the same toolchain, not execution IDs. A
+completed synthesis is not physical signoff.
 |}
           name
           assumptions
+          dir
           dir
           dir
           dir

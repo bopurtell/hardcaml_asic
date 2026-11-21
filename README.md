@@ -124,7 +124,8 @@ a diagnostic on stderr. The caller chooses and checks the destination.
 `render` emits `dune-project` plus exactly the files returned by
 `hardcaml-asic-starter render-target --name led-demo`. The latter works in
 an existing Dune project without changing its root. All chip-owned files live
-under `asic_led-demo/`. The README there explains simulation and RTL export.
+under `asic_led-demo/`. The README there explains simulation, RTL export, and
+headless synthesis replay from committed source with the same provisioned tools.
 The generated `project.exe` exposes chip discovery and
 the standard flow's `list`, `describe`, `plan` and `emit` commands. Silver
 previews and publishes the corresponding host-specific ASIC and preparation

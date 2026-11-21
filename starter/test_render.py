@@ -141,11 +141,28 @@ let () =
         assert all(p.read_bytes() == content for p, content in before.items())
         def query(*args):
             return json.loads(command("exec", target, "--", *args, "--json"))
-        def reject(expected, *args):
+        def reject(expected, *args, env=None):
             result = subprocess.run(["dune", "exec", "--root", ".", target, "--", *args],
-                                    cwd=root, text=True, capture_output=True)
+                                    cwd=root, text=True, capture_output=True, env=env)
             assert result.returncode != 0 and not result.stdout, (args, result)
             assert expected in result.stderr, (args, result.stderr)
+
+        # A minimal unborn Git repository, isolated even when the consumer
+        # fixture itself lives beneath a checkout with an existing HEAD.
+        with tempfile.TemporaryDirectory(dir=root) as tmp_git:
+            git = Path(tmp_git)
+            for directory in ("objects", "refs/heads"):
+                (git / directory).mkdir(parents=True)
+            (git / "HEAD").write_text("ref: refs/heads/main\n")
+            env = dict(os.environ, GIT_DIR=str(git), GIT_COMMON_DIR=str(git),
+                       GIT_WORK_TREE=str(root), GIT_OPTIONAL_LOCKS="0")
+            subprocess.run(["git", "symbolic-ref", "HEAD"], cwd=root, env=env,
+                           check=True, stdout=subprocess.PIPE)
+            reject("Bundle source provenance requires a Git checkout with an initial commit (HEAD)",
+                   "flow", "plan", "--flow", "standard", "--profile", "balanced",
+                   "--endpoint", "synthesis", "--json", env=env)
+            assert not (root / "_flow_results").exists()
+
         assert query("chip", "list")["default_chip"] == "led-demo"
         assert [x["id"] for x in query("chip", "list")["chips"]] == ["led-demo"]
         catalog = {"schema_version": 1, "default_target": "led-demo", "targets": [
