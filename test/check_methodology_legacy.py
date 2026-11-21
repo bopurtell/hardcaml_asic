@@ -4,18 +4,42 @@ Run after dune build -j20 @install. Builds only a disposable copy, sequentially
 with -j20; reads Git objects in the live checkout without modifying its state.
 Both emitters observe identical current source bytes and Git state. No EDA.
 
-Two refs shape the baseline build. --environment-ref supplies lib/ and
+Two refs shape the pre-seam build. --environment-ref supplies lib/ and
 dune-project: the last flat tree before the lib namespace reorganization, so
 the flat Project/Resolved_flow splice still fits. --baseline-ref supplies that
 splice. examples/ is always the current copy, because the bundle's source
 inventory comes from the example's own source_inputs.
+
+Bridge to the live build through the pre-starter provider: its manifest
+already records PT.5 resources and the newer support-tools pin. Require
+exact bytes against that frozen provider, including the manifest and identity.
 """
 
 import argparse
+import json
 from pathlib import Path
 import shutil
 import subprocess
 import tempfile
+
+from check_resolved_flow_api import inventory
+
+
+def compare_eras(old, new):
+    a, b = inventory(old), inventory(new)
+    legacy, modern = (json.loads(x.pop("manifest.json")) for x in (a, b))
+    assert a == b, "non-manifest members changed across format eras"
+    # These are the only intentional differences between the two pinned
+    # providers. The live emitter is compared byte-for-byte separately below.
+    assert legacy.pop("identity") != modern.pop("identity")
+    assert modern.pop("resource_snapshot")["schema_version"] == 1
+    for manifest, pin in ((legacy, "da63c9927411e3aca350977d653d24bbf5bca972"),
+                          (modern, "d66cf179e7bc4d296362ab7e2e3b344dc3c4f665")):
+        assert manifest["requested_tools"].pop("support_tools_revision") == pin
+        floorplan, = [r for r in manifest["target"]["external_references"]
+                      if r["role"] == "Floorplan_def"]
+        assert floorplan.pop("revision") == pin
+    assert legacy == modern, "unexpected manifest change across format eras"
 
 
 def main():
@@ -56,9 +80,26 @@ def main():
         # a redundant-record-update warning. Use the release warning policy.
         subprocess.run(["dune", "build", "--profile", "release", "-j20", "--root", str(baseline),
                         "examples/tt_bundle_example.exe"], cwd=baseline, check=True)
+        modern = baseline / "pre-starter"
+        modern.mkdir()
+        archive = subprocess.check_output(
+            ["git", "archive", "6195834d5a5c10885895ad5d217ffc01303902a0",
+             "lib", "flow_domain", "dune-project"], cwd=repo)
+        subprocess.run(["tar", "-x", "-C", str(modern)], input=archive, check=True)
+        shutil.copytree(repo / "examples", modern / "examples")
+        with (modern / "lib/hardcaml_asic.ml").open("a") as aliases:
+            aliases.write("\nmodule Chip_target = Project\n")
+        emitter = Path("_build/default/examples/tt_bundle_example.exe")
+        subprocess.run(["dune", "build", "--root", str(modern), "examples/tt_bundle_example.exe"],
+                       cwd=modern, check=True)
+        for kind in ("observable", "memory"):
+            old, new = (baseline / (kind + suffix) for suffix in ("-old", "-new"))
+            for provider, output in ((baseline, old), (modern, new)):
+                subprocess.run([provider / emitter, kind, output, repo], check=True)
+            compare_eras(old, new)
         subprocess.run(["python3", "-B", "test/check_resolved_flow_api.py",
                         "--baseline-emitter",
-                        str(baseline / "_build/default/examples/tt_bundle_example.exe")],
+                        str(modern / emitter)],
                        cwd=repo, check=True)
 
 

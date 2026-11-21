@@ -88,7 +88,9 @@ def main():
                 checked(str(args.baseline_emitter.resolve()), kind, str(baseline),
                         str(repo), env=env)
                 old, new = inventory(baseline), inventory(output)
-                assert old == new, (kind, "before/after bundle bytes differ")
+                differences = sorted(path for path in old.keys() | new.keys()
+                                     if old.get(path) != new.get(path))
+                assert not differences, (kind, "before/after bundle bytes differ", differences)
                 digest = hashlib.sha256(new["manifest.json"]).hexdigest()
                 print(f"{kind}: {len(new)} files byte-identical; manifest SHA-256 {digest}")
         print("external consumer: resolution, field reads, patterns, JSON and bundles pass")

@@ -257,7 +257,7 @@ def main():
         oracle = (repo / "examples/tt_bundle_example.ml").read_text().split("let () =\n")[0]
         for old, new in [
             ("let project kind =", "let project ?source_inputs ?design_override ?target_override kind ="),
-            ("  Project.create\n", "  Project.create ?source_inputs\n"),
+            ("  Chip_target.create\n", "  Chip_target.create ?source_inputs\n"),
             ("    ~design\n", "    ~design:(Option.value design_override ~default:design)\n"),
             ("    ~target:\n", "    ~target:(Option.value target_override ~default:\n"),
             ("{ harness = Tiny_tapeout", "{ Target.harness = Tiny_tapeout"),

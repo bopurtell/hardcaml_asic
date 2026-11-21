@@ -496,6 +496,14 @@ pre-reorganization commit), applies the same splice there, and builds the
 `source_inputs`. To compile against both layouts the example now names the
 top-level alias `Technology` instead of `Resource.Technology`. The manual `test/check_project_api.py` was not run.
 
+**2026-11-20 follow-up.** The historical and current emitters now span two
+intentional manifest changes: the support-tools revision (`60f03f2`) and the
+resolved resource snapshot (`e46bfd7`), both covered by the bundle identity.
+`test/check_methodology_legacy.py` bridges those formats with the pre-starter
+provider (`6195834`). It checks every non-manifest byte and the remaining
+manifest fields across eras, then compares the complete current bundles,
+including the manifest bytes, to that independently built provider.
+
 Comments and doc strings in moved files may still name modules by their old
 names in prose (for example `Resolved_flow`, `Resource_id`,
 `Elaboration_context`); only references that the compiler checks were updated.
