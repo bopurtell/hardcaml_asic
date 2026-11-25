@@ -16,9 +16,9 @@ def run(binary, args, cwd, **kwargs):
                           capture_output=True, **kwargs)
 
 
-def check_workbench_build(binary, root):
+def check_development_build(binary, root, build_dir):
     # A private Silver build must route to its own helper and resource tree.
-    context = root / '_build_workbench/default'
+    context = root / build_dir / 'default'
     bindir = context / 'bin'
     bindir.mkdir(parents=True)
     cli = bindir / 'flow_cli.exe'
@@ -39,7 +39,9 @@ def main():
         prefix = root / 'default'
         hardlink_prefix(REPO / '_build/install/default', prefix)
         binary = prefix / 'bin/hardcaml-asic-flow'
-        check_workbench_build(binary, root)
+        for build_dir in ('_build_silver', '_build_silver_managed', '_build_pt8_silver',
+                          '_build_workbench', '_build_pt8_workbench'):
+            check_development_build(binary, root, build_dir)
         package = prefix / 'lib/hardcaml_asic/flow/hardcaml_asic_flow'
         reference = copy_reference(REPO / 'flow', root / 'oracle', package.parent)
         activate(reference, package.parent)

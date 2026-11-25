@@ -129,7 +129,8 @@ headless synthesis replay from committed source with the same provisioned tools.
 The generated `project.exe` exposes chip discovery and
 the standard flow's `list`, `describe`, `plan` and `emit` commands. Silver
 previews and publishes the corresponding host-specific ASIC and preparation
-configuration and chip catalog registration. Build `asic_led-demo/project.exe`
+configuration (`.silver/silver-asic.sexp`, `.silver/silver-preparation.sexp`)
+and chip catalog registration. Build `asic_led-demo/project.exe`
 before discovery. See [chip targets](docs/guides/chip-targets.md) for
 registration, selecting another chip, and migrating earlier starters.
 Planning and bundle emission use Git HEAD for provenance.
@@ -297,7 +298,7 @@ As of 2026-10-25:
   256×16 SRAM fresh synthesis/full execution with the checked physical profile.
 - **Resource preparation:** PT.4 provides structured pre-run inventory, durable
   Elaborate & Resolve attempts, historical inspection and explicit identity
-  comparison. CLI/library acceptance is complete independently of Workbench.
+  comparison. CLI/library acceptance is complete independently of Silver.
 - **Evidence:** a fresh installed consumer completed all six physical stages
   plus external acceptance (DRC/LVS/antenna, TT precheck, gate-level replay);
   the `balanced` and `synth_delay` profiles each passed real synthesis. See
@@ -306,7 +307,7 @@ As of 2026-10-25:
   TT precheck and routed-netlist functional replay. PT.0c and PT.2 are closed
   for the supported profile; see the [physical closeout](docs/development/sram-example-physical.md).
 - **Next:** adopt the backend in Protemu (PT.3a), then verify its real system;
-  expose selected/realized resource mappings to Workbench, then extend
+  expose selected/realized resource mappings to Silver, then extend
   timing declarations and reproducible configuration studies. See the
   [active queue](docs/phase_plan.md#active-queue).
 - **Open:** source-artifact stamping and independent-installation gates (ASIC

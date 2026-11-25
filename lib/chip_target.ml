@@ -117,7 +117,7 @@ let of_variant ~variant ~create =
   else Ok { project with hardware_variant = Some variant }
 ;;
 
-(* Local declaration inspection only, not a Workbench observation protocol:
+(* Local declaration inspection only, not a Silver observation protocol:
    unpacking does not run D.create, resolve a target, or read files/Git/PDKs. *)
 let describe t =
   let (module D) = t.design in

@@ -98,7 +98,7 @@ make an initial Git commit with `dune-project`, this chip's source directory
 (including `flows/`), any referenced IP, and `hardcaml-asic-targets.json` if
 present. Do not commit `_build/`, `_flow_results/`, `_flow_tools`, `.dev/` or
 local Silver state. For headless replay, start from a clean clone of the same
-commit. Silver and its `.workbench/` configuration are not needed.
+commit. Silver and its `.silver/` configuration are not needed.
 
 Use the same OCaml switch, installed `hardcaml_asic` tools and libraries, and
 provisioned toolchain for both runs. Set `ASIC_TOOLCHAIN` to its absolute path.

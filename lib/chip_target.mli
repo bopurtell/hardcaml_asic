@@ -100,7 +100,7 @@ val source_inputs : t -> string list
 
 (** Local declaration facts, including the packed Design.name, without constructing
     a circuit, resolving a flow, or reading files, Git or a PDK. This is not a
-    Workbench driver or observation protocol. *)
+    Silver driver or observation protocol. *)
 val describe : t -> Sexp.t
 
 (** Elaborate the design in the selected mode, retaining its intent and resources.

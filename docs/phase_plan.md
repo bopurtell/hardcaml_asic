@@ -74,7 +74,7 @@ and [earlier synthesis record](development/sram-example-integration.md#evidence)
 | --- | --- |
 | `hardcaml_asic` | Resource contracts and selection, macro wrappers/collateral, physical and timing intent validation, backend rendering, mapping evidence, public inspection interfaces |
 | `hardcaml_protemu` | Hardware parameters, program packing, loading/fetch validity, synchronization architecture, project policy/placement/constraints, workloads and whole-system verification |
-| `hardcaml_workbench` | Discovery and presentation of ASIC-owned data; resource browsing, comparison and user controls through public provider interfaces |
+| `silver` | Discovery and presentation of ASIC-owned data; resource browsing, comparison and user controls through public provider interfaces |
 
 ASIC must remain usable headlessly and must not depend on Workbench. Cross-repo
 items below are coordination deliverables; their implementation lives with the

@@ -40,6 +40,8 @@ with tempfile.TemporaryDirectory(dir=os.environ.get("STARTER_TEST_CHECKOUT_DIR")
     assert paths == {"dune-project"} | {"asic_led-demo/" + path for path in
                                         ["README.md", "chip.ml", "project.ml", "dune", "rtl.ml", "test_chip.ml",
                                          "flows/dune", "flows/flow_standard.ml"]}
+    readme = next(f["contents"] for f in data["files"] if f["path"] == "asic_led-demo/README.md")
+    assert "`.silver/`" in readme and "`.workbench/`" not in readme
     result = invoke("render-target", "--name", "led-demo")
     result.check_returncode()
     nested = json.loads(result.stdout)["files"]

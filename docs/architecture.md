@@ -36,7 +36,7 @@ signoff verdict.
 
 **Not implemented:** a store-wide catalog with idempotency, backend-step
 observation, execution recovery, configuration-changing checkpoint reuse,
-Workbench application integration, and source-artifact stamping (ASIC P6.5a).
+Silver application integration, and source-artifact stamping (ASIC P6.5a).
 
 ## 2. Responsibilities and dependency direction
 
@@ -48,24 +48,24 @@ Workbench application integration, and source-artifact stamping (ASIC P6.5a).
 | Installed Python runtime (`flow/hardcaml_asic_flow/`) | Thirteen modules (`__init__`, `backend_protocol`, `librelane_bridge`, `stage_metadata_probe`, `probe`, `runtime_observation`, `runtime_contract`, `managed_python`, `paths`, `macro_flow`, `physical_runtime`, `timing_intent_runtime`, `timing_physical_runtime`) plus four data files. Calls the official LibreLane API, probes runtimes, provisions, and implements checked physical-macro and linked pre/post-PNR timing adaptations |
 | Retired Python sources | Sixteen former service modules kept in the checkout only as references and test oracles. Their installed imports are a deliberate Python API break |
 | Hardware project (e.g. the example) | Design and wrapper semantics, testbenches, declaration, flow catalog, dependency pin and chosen evidence stores |
-| Workbench ASIC adapter | Consumes the project's public provider interface and translates it into feature data |
-| Workbench application | Job supervision, derived catalog/cache, workspace/window/tile state and presentation |
+| Silver ASIC adapter | Consumes the project's public provider interface and translates it into feature data |
+| Silver application | Job supervision, derived catalog/cache, workspace/window/tile state and presentation |
 
-Dependencies run one way: hardware project → ASIC library/CLI, and Workbench
-adapter → the project/provider entry point. ASIC never imports Workbench types
-and needs no Workbench daemon. The hardware library does not depend on the
+Dependencies run one way: hardware project → ASIC library/CLI, and Silver
+adapter → the project/provider entry point. ASIC never imports Silver types
+and needs no Silver daemon. The hardware library does not depend on the
 execution library. Ordinary Dune builds and project regressions need not route
-through ASIC. Versioned structured data lets Workbench decode typed values
+through ASIC. Versioned structured data lets Silver decode typed values
 independently of the provider's implementation language.
 
 ASIC owns canonical bundles, runs, snapshots, raw evidence, check attempts and
-archives. Workbench owns a rebuildable index, bounded caches, saved selections and
+archives. Silver owns a rebuildable index, bounded caches, saved selections and
 layouts; its daemon owns its own process handles. Readers of one run are
 independent: selection, tile lifetime and client detach never control a flow.
 
-The active [Workbench architecture](../../silver/docs/hardcaml_workbench_architecture.md)
-and [construction plan](../../silver/docs/construction_phase_plan.md)
-own feature, window and tile behavior. These workspace links are for navigation,
+The active [Silver documentation](../../silver/docs/README.md)
+and [ASIC provider integration guide](../../silver/docs/asic_provider_integration.md)
+describe its feature and integration behavior. These workspace links are for navigation,
 not runtime path requirements.
 
 ### Current native execution source map
@@ -166,7 +166,7 @@ separately.
 The consumer owns each chip target's constructor, declaration, wrapper and source inventory.
 `Chip_target.create ?source_inputs` defaults to `[]`. `Chip_target.describe` returns
 declaration facts as an S-expression with no design construction, resolution or
-I/O. It is not a Workbench protocol. Root and output paths are execution
+I/O. It is not a Silver protocol. Root and output paths are execution
 arguments, not declaration fields.
 
 `Chip_target.emit_bundle ?inputs ?include_simulation t ~source_root ~output_dir`
@@ -287,7 +287,7 @@ effects/per-check and analog consumer qualification remain open. See the
 [named synthesis contract](development/pt7-named-synthesis.md).
 Resolved target constraints include drive/load and timing margins. Expose those
 facts and the emitted constraint identity to observers rather than creating a
-second editable configuration in Workbench. Generated clocks and CTS (clock-tree
+second editable configuration in Silver. Generated clocks and CTS (clock-tree
 synthesis) analytics are later capabilities.
 
 Named flow profiles (§9) may set only typed, explicitly exposed backend
@@ -468,7 +468,7 @@ not script their own stage sequence.
 | --- | --- |
 | Consumer project | Declares its flows, profiles and default selection in ordinary OCaml modules (the example: `asic/flow_catalog.ml`, `asic/flow_profiles.ml`), which are declared inputs |
 | `hardcaml_asic` | Typed `Catalog`, `Methodology`, `Profile` and `Parameter` APIs; resolution, validation, execution and authoritative evidence |
-| Workbench (proposed) | Displays choices, remembers a project-scoped `{flow_id, profile_id}` reference, launches and presents. It never holds a second copy of the methodology |
+| Silver (proposed) | Displays choices, remembers a project-scoped `{flow_id, profile_id}` reference, launches and presents. It never holds a second copy of the methodology |
 | LibreLane | Keeps its backend engine, step implementations and physical checks |
 
 The current backend recipe is `librelane.classic.v1`, run as fresh, contiguous
@@ -520,7 +520,7 @@ bypass). When full, both are accepted and the old head is returned. The TT
 wrapper owns pin mapping and output/OE masking separately from synchronous reset.
 
 The example owns its Dune files, design, scoreboard, regressions and ordinary
-commands. ASIC owns flow and report semantics; Workbench owns adaptation and
+commands. ASIC owns flow and report semantics; Silver owns adaptation and
 presentation. The example's recorded ASIC pin predates the current `Project` API,
 so it uses explicit development refresh until the owner adopts a committed
 candidate ([phase plan](phase_plan.md#active-queue)).
