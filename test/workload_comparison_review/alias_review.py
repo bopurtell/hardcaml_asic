@@ -23,7 +23,7 @@ def main():
     probe, variant, fence = (getattr(a, k).resolve() for k in ['probe', 'variant', 'fence'])
     v = json.loads(subprocess.check_output([str(variant), 'variant']))
     receipts = []
-    with tempfile.TemporaryDirectory(prefix='pt8-independent-alias-') as tmp:
+    with tempfile.TemporaryDirectory(prefix='workload-alias-review-') as tmp:
         root = Path(tmp)
         left, lw, ls, _ = fixture(root / 'left', v, 'flops')
         right, rw, _, _ = fixture(root / 'right', v, 'sram')

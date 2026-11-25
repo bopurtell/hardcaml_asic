@@ -1,9 +1,0 @@
-working_directory=/home/wayne/devel/jane/hardcaml_asic
-command=timeout 30s vvp evidence/sram-model-conformance/timing-probe-default.vvp 
-RESULT_EVENT time_ps=5000 value=1
-PATH_AT_0P5NS_AFTER_EDGE value=1
-PATH_AT_1P1NS_AFTER_EDGE value=1
-RESULT_EVENT time_ps=15000 value=0
-TIMING_CHECK_NOTIFIER value=0
-DIAGNOSTIC result_events=2
-/home/wayne/devel/jane/hardcaml_asic/experiments/sram_model_conformance/timing_support_tb.sv:58: $finish called at 16100 (1ps)

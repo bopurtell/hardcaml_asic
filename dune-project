@@ -6,9 +6,10 @@
 (generate_opam_files true)
 
 (source
- (github LeEmperor/hardcaml_asic))
+ (github bopurtell/hardcaml_asic))
 
 (authors "Bohdan Purtell <bohdanpurtell@gmail.com>")
+(license MIT)
 (maintainers "Bohdan Purtell <bohdanpurtell@gmail.com>")
 
 (package
@@ -27,13 +28,12 @@ the record operations -- version, help, collect, report, archive -- need none \
 of them.")
  (depends
   (ocaml (>= 5.1))
-  (dune (>= 3.17))
   core
   hardcaml
   yojson
   cryptokit
-   zarith
-   spawn
+  zarith
+  spawn
   ppx_jane
   ppx_hardcaml
   ; Host Python for the installed hardcaml-asic-flow command. conf-python-3 does

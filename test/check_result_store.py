@@ -16,7 +16,7 @@ TIME = 1760000000.123456
 IDS = [f"{n:08x}" + "12344abc8def123456789abc" for n in range(32)]
 
 def verify(consumer, workers=16):
-    from hardcaml_asic_flow import result_store as old, phase4
+    from hardcaml_asic_flow import result_store as old, coarse_flow_oracle
     def run(**request):
         completed = subprocess.run([str(consumer)], input=json.dumps(request) + "\n",
                                    text=True, capture_output=True, check=True, timeout=15)
@@ -107,7 +107,7 @@ def verify(consumer, workers=16):
         for record in records:
             assert save(target, record) is True
             assert target.read_bytes() == (json.dumps(record, indent=2, sort_keys=True) + "\n").encode()
-            assert phase4.read_json(target) == record  # actual provider reader
+            assert coarse_flow_oracle.read_json(target) == record  # actual provider reader
             assert run(op="read", path=str(target)) == record
             old.save_json(target, record)
             assert run(op="read", path=str(target)) == record  # old writer/new reader
@@ -172,7 +172,7 @@ def verify(consumer, workers=16):
         begun = run(op="begin", path=str(root / "results"), bundle=str(bundle), time=TIME, ids=IDS)
         receipt_path, report_path = Path(begun["receipt_path"]), Path(begun["report_path"])
         receipt = begun["receipt"]
-        assert phase4.read_json(receipt_path) == receipt
+        assert coarse_flow_oracle.read_json(receipt_path) == receipt
         assert not report_path.exists()  # caller must write pending before its probe
         assert receipt == {"schema_version": 1, "record_type": "preflight_operation", "operation_id": IDS[0],
             "bundle": str(bundle), "started_at": py.created_at, "ended_at": None, "status": "pending",
@@ -183,7 +183,7 @@ def verify(consumer, workers=16):
             classified = run(op="classify", value=result)
             assert classified == {"status": "ready" if ready else "failed", "exit_code": 0 if ready else 1, "result": result}
             save(report_path, result)
-            assert phase4.read_json(report_path) == result
+            assert coarse_flow_oracle.read_json(report_path) == result
         for malformed in ({}, {"ready": 1, "issues": []}, {"ready": True, "issues": {}}, []):
             assert "error" in run(op="classify", value=malformed)
         receipt["future"] = {"retained": True}

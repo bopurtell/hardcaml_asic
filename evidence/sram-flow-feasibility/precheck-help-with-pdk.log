@@ -1,6 +1,0 @@
-usage: precheck.py [-h] --gds GDS [--tech {sky130A,ihp-sg13cmos5l,gf180mcuD}]
-
-options:
-  -h, --help            show this help message and exit
-  --gds GDS
-  --tech {sky130A,ihp-sg13cmos5l,gf180mcuD}

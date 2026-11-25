@@ -69,7 +69,7 @@ def main():
     assert all(m['comparison'] == 'confounded' and m['right_minus_left'] is None for m in native)
     assert all('stage: differs' in m['reasons'] and 'rc: differs' in m['reasons'] for m in native)
     if a.check_declared_inputs:
-        with tempfile.TemporaryDirectory(prefix='pt8-b-physical-input-') as tmp:
+        with tempfile.TemporaryDirectory(prefix='variant-physical-input-') as tmp:
             copied = Path(tmp) / 'run'
             shutil.copytree(a.physical, copied, symlinks=True)
             original = compare('descriptive', 'coarse_run', copied, copied)

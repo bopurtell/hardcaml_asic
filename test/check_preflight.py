@@ -74,7 +74,7 @@ print(json.dumps(value))
 
 def suite(cli, package, public, consumer=None):
     sys.path.insert(0, str(package.parent))
-    from hardcaml_asic_flow import phase4, runtime_contract, result_store
+    from hardcaml_asic_flow import coarse_flow_oracle, runtime_contract, result_store
     with tempfile.TemporaryDirectory(prefix='preflight differential ') as tmp:
         root = Path(tmp)
         bin = root/'bin'
@@ -96,7 +96,7 @@ def suite(cli, package, public, consumer=None):
                 python=dict(policy='distribution-supported',requires_python='>=3.10',supported_minors=list(runtime_contract.SUPPORTED_MINORS)))
             return {k:policy[k] for k in ('schema_version','host','implementation')}
         manifest = dict(schema_version=1, adapter='LibreLane', requested_tools=requested,
-            files=[dict(path='data',sha256=phase4.digest(bundle/'data'))],
+            files=[dict(path='data',sha256=coarse_flow_oracle.digest(bundle/'data'))],
             target=dict(technology='tech', external_references=[dict(source='Support_tools',role='test',path='collateral')]))
         (bundle/'manifest.json').write_text(json.dumps(manifest))
         env = dict(os.environ, PATH=str(bin), FIXTURE=str(root))
@@ -119,7 +119,7 @@ def suite(cli, package, public, consumer=None):
                 old = os.environ.copy()
                 try:
                     os.environ.clear(); os.environ.update(env)
-                    expected = phase4.preflight(bundle,tools,pdk,bin/'python',native=native)
+                    expected = coarse_flow_oracle.preflight(bundle,tools,pdk,bin/'python',native=native)
                 finally:
                     os.environ.clear(); os.environ.update(old)
                 assert actual == expected, (mode,native,actual,expected,result.stderr)
@@ -176,7 +176,7 @@ def suite(cli, package, public, consumer=None):
         old = os.environ.copy()
         try:
             os.environ.clear(); os.environ.update(env)
-            expected = phase4.preflight(bundle,tools,pdk,Path(literal),native=True)
+            expected = coarse_flow_oracle.preflight(bundle,tools,pdk,Path(literal),native=True)
         finally:
             os.environ.clear(); os.environ.update(old)
         assert actual==expected,(actual,expected,r.stderr)

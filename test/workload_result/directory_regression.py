@@ -30,7 +30,7 @@ def main():
     parser.add_argument('--probe', type=Path, required=True)
     a = parser.parse_args()
     variant = json.loads(subprocess.check_output([str(a.consumer.resolve()), 'variant']))
-    with tempfile.TemporaryDirectory(prefix='pt8-directory-regression-') as tmp:
+    with tempfile.TemporaryDirectory(prefix='workload-directory-regression-') as tmp:
         root = Path(tmp)
         bundle = root / 'bundle'
         bundle.mkdir()

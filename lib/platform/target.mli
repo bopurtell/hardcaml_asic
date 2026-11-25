@@ -19,7 +19,7 @@
 
    A resolved target records references to external files by revision, relative path and
    (for the floorplan) hash. It does NOT open, fetch or hash any of them; checking them
-   against a real support-tools checkout and PDK is P4 preflight. It does NOT check the
+   against a real support-tools checkout and PDK is execution preflight. It does NOT check the
    design either; the TT top-level interface, metadata, pinout and timing are checked by
    {!Elaboration.Resolved.resolve}.
 *)
@@ -86,7 +86,7 @@ end
 
     {!resolve} checks the shape of every field, NOT whether the revisions actually contain
     that floorplan, hash, die area or those views; a wrong hash or die area resolves fine
-    and is first caught by P4 preflight. *)
+    and is first caught by execution preflight. *)
 module Inputs : sig
   type t =
     { support_tools_revision : string

@@ -14,9 +14,7 @@ The workflow has three separate layers:
 3. **Execution:** run the immutable bundle, collect and interpret the results,
    and archive the evidence.
 
-Each step links to the guide that owns its details. The earlier version of this
-page, which used the deprecated `phase4.py` development commands, is in the
-[archive](../archive/usage-guide-2026-10-15.md).
+Each step links to the guide that owns its details.
 
 ## 1. Install an exact revision
 
@@ -25,7 +23,7 @@ Pin a full commit rather than a moving branch:
 ```sh
 ASIC_REV=<full-hardcaml_asic-commit-hash>
 opam pin add --no-action hardcaml_asic \
-  "git+https://github.com/LeEmperor/hardcaml_asic.git#$ASIC_REV"
+  "git+https://github.com/bopurtell/hardcaml_asic.git#$ASIC_REV"
 opam install hardcaml_asic
 ```
 
@@ -42,8 +40,7 @@ No sibling `../hardcaml_asic` checkout is needed. An isolated-prefix
 installation is also supported, and
 [`test/package_consumer_smoke.sh`](../../test/package_consumer_smoke.sh)
 exercises it. See [consumer installation](consumer-installation.md) for both
-routes, and the [consumer dependency workflow](../development/consumer-dependency-workflow.md)
-for developing a consumer against a local provider checkout.
+routes.
 
 ## 2. Declare a chip target in the project
 
@@ -153,9 +150,7 @@ In a consumer:
   the separate simulation elaboration and reuses synthesis sources.
 - **Store-based emission:** `Chip_target.emit_bundle_to_store` publishes, or reuses,
   a verified immutable identity-addressed bundle instead of writing a directory.
-- **Project CLI:** a consumer typically wraps all this in a small CLI. The
-  example's `asics/fifo_demo/cli/chip.exe describe|emit|preflight|run` emits into
-  `ROOT/_flow_results/bundles` by default.
+- **Project CLI:** a consumer typically wraps emission in a small CLI that publishes under its own results root.
 
 See the [bundle guide](bundle-emission.md), including its
 [project entry point](bundle-emission.md#project-centered-entry-point).
@@ -249,7 +244,7 @@ Notes:
 
 Beyond a single coarse run:
 
-- **Explicit stages** (synthesis → floorplan → placement → cts → routing →
+- **Explicit stages** (synthesis → floorplan → placement → cts → routing → timing →
   signoff) with checkpoints, restart and a live journal you can watch from
   another shell: see the [stage quickstart](stage-quickstart.md).
 - **Named flows and parameter profiles** declared by your project: see
@@ -327,10 +322,6 @@ collateral. Archives made before complete-input preservation may lack
   physical stages. Flop synthesis evidence does not prove macro placement or routing.
 - **ABC delay print:** the pinned LibreLane ABC renderer passes a `cell/pin`
   token where ABC expects a cell name. That invalidates only ABC's printed delay
-  estimate, not mapped cells/area or the post-route OpenSTA results (tracked as
-  ASIC T.1).
+  estimate, not mapped cells/area or the post-route OpenSTA results .
 - **Not yet available:** commercial adapters, other targets and flows, broader
-  memory/resource support, and source-artifact identity in `--version` (ASIC P6.5).
-
-Status and history are in the [phase plan](../phase_plan.md); they are not part
-of the onboarding route.
+  memory/resource support, and source-artifact identity in `--version`.

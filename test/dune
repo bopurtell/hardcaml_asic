@@ -177,7 +177,7 @@
 
 (rule
  (alias ocaml-collect)
- (deps reference_harness.py resource_evidence_compat.py check_collect.py test_phase4.py (source_tree ../flow))
+ (deps reference_harness.py resource_evidence_compat.py check_collect.py test_coarse_flow.py (source_tree ../flow))
  (action (run python3 -B %{dep:check_collect.py}
    --cli %{exe:../bin/experimental_collect.exe}
    --consumer %{exe:collect_consumer.exe})))
@@ -434,8 +434,8 @@
 
 (rule
  (alias runtest)
- (deps test_phase4.py (source_tree ../flow) ../toolchain.lock)
- (action (run python3 %{dep:test_phase4.py})))
+ (deps test_coarse_flow.py (source_tree ../flow) ../toolchain.lock)
+ (action (run python3 %{dep:test_coarse_flow.py})))
 
 (rule
  (alias result-store)
@@ -539,7 +539,7 @@
 
 (rule
   (alias execution-transport)
- (deps test_execution_transport.py test_phase4.py (source_tree ../flow) ../toolchain.lock)
+ (deps test_execution_transport.py test_coarse_flow.py (source_tree ../flow) ../toolchain.lock)
   (action (run python3 -B %{dep:test_execution_transport.py})))
 
 (executable
@@ -564,7 +564,7 @@
 ; Coarse lifecycle and CLI compatibility; no nested Dune or live EDA runtime.
 (rule
  (alias coarse-runner)
- (deps test_runner.py test_phase4.py test_flow_cli.py (alias flow-cli)
+ (deps test_runner.py test_coarse_flow.py test_flow_cli.py (alias flow-cli)
        (source_tree ../flow) ../toolchain.lock)
  (action (run python3 -B %{dep:test_runner.py})))
 
@@ -725,3 +725,13 @@
 (alias
  (name runtest)
  (deps (alias install-script)))
+(rule
+ (alias sram-probe)
+ (deps test_sram_probe_collateral.py test_sram_probe_runner.py
+       (source_tree fixtures/sram_flow_probe))
+ (action
+  (run python3 -B -m unittest discover -s . -p test_sram_probe_*.py)))
+
+(alias
+ (name runtest)
+ (deps (alias sram-probe)))

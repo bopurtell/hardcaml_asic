@@ -272,7 +272,7 @@ def execute(request_path):
     require(request["manifest_sha256"] == digest(project / "manifest.json") and
             request["build_identity"] == manifest["identity"], "request/build mismatch")
     require(request["producer_sha256"] == digest(project / PRODUCER), "producer changed")
-    require(not manifest.get("macro_contract"), "PT7 linked analysis currently supports macro-free synthesis only")
+    require(not manifest.get("macro_contract"), "Linked timing analysis currently supports macro-free synthesis only")
     if named:
         require(named_digest(request["publication"]["path"], {}) == request["publication"]["sha256"], "publication changed")
     publication = load(request["publication"]["path"]) if named else None
@@ -282,7 +282,7 @@ def execute(request_path):
     corner = resolved["DEFAULT_CORNER"]
     require(isinstance(corner, str) and corner and Path(corner).name == corner and corner not in (".", ".."), "invalid default corner")
     require(resolved["PNR_SDC_FILE"] == str(project / "constraints/top.sdc"), "resolved SDC differs from emitted SDC")
-    require(not resolved.get("EXTRA_LIBS") and not resolved.get("EXTRA_VERILOG_MODELS"), "extra linked models are outside bounded PT7 route")
+    require(not resolved.get("EXTRA_LIBS") and not resolved.get("EXTRA_VERILOG_MODELS"), "extra linked models are outside bounded linked timing route")
     effective = dict(resolved)
     effective.update(STA_CORNERS=[corner], STA_THREADS=1, OPENROAD_THREADS=1,
                      STA_EXTRA_CORNER_TCL_FILE=str(out / "hook.tcl"))
@@ -335,7 +335,7 @@ def execute(request_path):
             retain("native_producer", project / PRODUCER, "native-producer.tcl")
             version = subprocess.run(["sta", "-version"], text=True, capture_output=True, timeout=20, check=True)
             require(version.stdout.strip() and not version.stderr.strip(), "unexpected native version output")
-            require(version.stdout.strip() == "2.7.0", "unsupported native OpenSTA version for PT7 profile")
+            require(version.stdout.strip() == "2.7.0", "unsupported native OpenSTA version for linked timing profile")
             (directory / "producer-version.txt").write_text(version.stdout)
             write(directory / "version-process.json", dict(argv=["sta", "-version"], exit_code=version.returncode,
                   stdout_sha256=digest(directory / "producer-version.txt"), stderr=version.stderr))

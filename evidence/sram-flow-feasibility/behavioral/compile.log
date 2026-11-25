@@ -1,6 +1,0 @@
-cwd: /home/wayne/devel/jane/hardcaml_asic
-command: iverilog -g2012 -Wall -DFUNCTIONAL -s tt_um_sram_probe_tb -o evidence/sram-flow-feasibility/behavioral/probe.vvp /home/wayne/devel/jane/hardcaml_asic/.toolchain/pdk/ihp-sg13cmos5l/libs.ref/sg13cmos5l_sram/verilog/RM_IHPSG13_1P_core_behavioral_bm_bist.v /home/wayne/devel/jane/hardcaml_asic/.toolchain/pdk/ihp-sg13cmos5l/libs.ref/sg13cmos5l_sram/verilog/RM_IHPSG13_1P_256x16_c2_bm_bist.v /home/wayne/devel/jane/hardcaml_asic/experiments/sram_flow_feasibility/tt_um_sram_probe.v /home/wayne/devel/jane/hardcaml_asic/experiments/sram_flow_feasibility/tt_um_sram_probe_tb.sv
-/home/wayne/devel/jane/hardcaml_asic/experiments/sram_flow_feasibility/tt_um_sram_probe.v:3: warning: timescale for tt_um_sram_probe inherited from another file.
-/home/wayne/devel/jane/hardcaml_asic/.toolchain/pdk/ihp-sg13cmos5l/libs.ref/sg13cmos5l_sram/verilog/RM_IHPSG13_1P_256x16_c2_bm_bist.v:20: ...: The inherited timescale is here.
-/home/wayne/devel/jane/hardcaml_asic/experiments/sram_flow_feasibility/tt_um_sram_probe.v:29: warning: timescale for RM_IHPSG13_1P_256x16_portable_wrapper inherited from another file.
-/home/wayne/devel/jane/hardcaml_asic/.toolchain/pdk/ihp-sg13cmos5l/libs.ref/sg13cmos5l_sram/verilog/RM_IHPSG13_1P_256x16_c2_bm_bist.v:20: ...: The inherited timescale is here.

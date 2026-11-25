@@ -145,7 +145,7 @@ def verify(emitter, provider):
     previous = None
     records = []
     # Actual captured producer numbers from
-    # evidence/librelane-observation/journal-event-timing{,-floorplan}.json.
+    # the archived LibreLane journal-event timing captures.
     # Keep these literal regressions available in the installed-only test too.
     elapsed = [0.00030089501524344087, 0.002011571021284908,
                0.655296418000944, 0.6555905290006194, 5.464505295007257,

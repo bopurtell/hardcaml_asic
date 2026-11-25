@@ -7,43 +7,19 @@ tools or reads a PDK. Running a bundle is covered in
 
 ## Chip target entry point
 
-The consumer owns a chip target constructor: the FIFO specimen exposes
-`Fifo_asic.chip_target () : Hardcaml_asic.Chip_target.t Core.Or_error.t` and `Tt_wrapper`
-through its facade. Its `asics/fifo_demo/project/fifo_chip.ml` owns the declaration and source
-inventory, and `asics/fifo_demo/cli/chip.exe` supplies `describe`, `emit`, `preflight` and
-implementation-only `run` (plus `flow plan|run` for [named flows](named-flows.md)).
-The shared emission orchestration belongs to `Hardcaml_asic.Chip_target.emit_bundle`.
+The consumer owns a chip target constructor. The shared emission orchestration belongs to `Hardcaml_asic.Chip_target.emit_bundle`.
 
 OCaml consumer code (inside a function with `source_root` and `output_dir` arguments):
 
 ```ocaml
 let open Core.Or_error.Let_syntax in
-let%bind chip_target = Fifo_asic.chip_target () in
+let%bind chip_target = make_chip_target () in
 Hardcaml_asic.Chip_target.emit_bundle chip_target ~source_root ~output_dir
 ```
 
-Shell commands, from the example checkout after
-[development refresh and activation](../development/consumer-dependency-workflow.md#implemented-commands):
+The consumer can expose a declaration-only `describe` command and a separate `emit` command. See [chip targets](chip-targets.md) for a generated standalone project CLI.
 
-```sh
-dune exec asics/fifo_demo/cli/chip.exe -- describe
-dune exec asics/fifo_demo/cli/chip.exe -- emit
-# Machine callers request JSON explicitly; exact destination override:
-dune exec asics/fifo_demo/cli/chip.exe -- emit \
-  --source-root "$PWD" --output-dir /tmp/fifo-project-bundle --json
-```
-
-`describe` prints a local S-expression of declaration facts, including the top name
-and inventory. It does not construct the design, resolve a flow, read Git/files/PDKs
-or write output. `describe --json` wraps the declaration S-expression and actual
-project name; neither format is a Workbench observation protocol. `emit` defaults
-to verified identity-addressed publication and a human created/reused summary;
-`--json` prints `identity` and `output_dir`. Explicit `--output-dir` retains ordinary
-writing. `preflight` and `run` emit/reuse current sources unless given `--bundle`,
-then route to the installed provider. Run requires a stage and performs implementation
-only. See the [command/storage matrix](flow.md#default-result-store-and-cli-contract-4)
-for roots, JSON migration, persistence and separate existing-run operations.
-
+<a id="project-centered-entry-point"></a>
 `Chip_target.create ?source_inputs` defaults to `[]`; `Chip_target.source_inputs` returns
 the declaration unchanged, including order and duplicates. Source paths belong to
 the project; the source root and output directory are execution arguments. Creation
@@ -123,7 +99,7 @@ validated concrete TT/LibreLane facts plus the `elaborated_project` field.
 its optional `~simulation_project` takes a separate Simulation elaboration.
 `Bundle.write` writes the bundle, and execution happens separately.
 (These names replaced `Build`/`Resolved_build` without changing persisted keys,
-schema or hashing; see the [API migration](../phase_plan.md#public-api-rename-migration-and-evidence).)
+schema or hashing.)
 
 From this repository's root:
 
@@ -297,6 +273,4 @@ builds unrelated consumers against `_build/install/default/lib`.
   the root-link layout without executing EDA.
 
 Renaming or copying source inputs legitimately changes bundle identity through
-provenance, even when the hardware is byte-identical. Acceptance evidence for the
-entry point is recorded in the
-[phase plan](../phase_plan.md#project-centered-entrypoint-acceptance).
+provenance, even when the hardware is byte-identical.

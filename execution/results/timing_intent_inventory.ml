@@ -3,7 +3,7 @@ let max_source_bytes = 128 * 1024 * 1024
 let max_total_bytes = 512 * 1024 * 1024
 type usage = { source_count : int; total_bytes : int; largest_bytes : int }
 type alias = { path:string; target:string; root:string; sha256:string; bytes:int }
-let require b message = if not b then invalid_arg ("PT7 named inventory: "^message)
+let require b message = if not b then invalid_arg ("Named timing inventory: "^message)
 let absolute path =
   require (not (Filename.is_relative path) && not (String.contains path '\000')) "absolute source path required";
   (match Checkpoint.absolute_path path with Ok p -> require (p=path) "non-normalized declared source path" | Error e -> invalid_arg e)
@@ -24,8 +24,8 @@ let external_resolution ~roots path =
   let matching=List.filter (fun root -> within root path) roots in
   let root=match matching with
     | [root] -> root
-    | [] -> invalid_arg "PT7 named inventory: alias outside allowed collateral root"
-    | _ -> invalid_arg "PT7 named inventory: ambiguous collateral root" in
+    | [] -> invalid_arg "Named timing inventory: alias outside allowed collateral root"
+    | _ -> invalid_arg "Named timing inventory: ambiguous collateral root" in
   canonical_root root;
   require (within root target) "alias target outside allowed canonical root";
   target,root,strict_regular target
@@ -37,7 +37,7 @@ let regular ?(aliases=[]) path =
     require (a.path<>a.target && target=a.target && root=a.root) "declared alias resolution differs from bound target";
     require (stat.st_size=a.bytes) "declared alias byte count differs";
     stat
-  | _ -> invalid_arg "PT7 named inventory: duplicate alias declaration"
+  | _ -> invalid_arg "Named timing inventory: duplicate alias declaration"
 let admit_paths ?(aliases=[]) ?(external_roots=[]) paths =
   require (List.length paths<=max_sources) "source count exceeds 4096";
   require (List.length paths=List.length (List.sort_uniq String.compare paths)) "duplicate named source path";
@@ -100,7 +100,7 @@ let validate_aliases ~roots ~external_files aliases =
     (match List.assoc_opt a.path external_files with
      | Some expected -> require (expected.Checkpoint.sha256=a.sha256 && expected.bytes=string_of_int a.bytes)
          "alias hash/bytes differ from exact external closure key"
-     | None -> invalid_arg "PT7 named inventory: alias is not an exact external closure key");
+     | None -> invalid_arg "Named timing inventory: alias is not an exact external closure key");
     ignore (regular ~aliases:[a] a.path)) aliases;
   List.iter (fun (path,_) -> if not (String.starts_with ~prefix:"/nix/store/" path) && Unix.realpath path<>path then
     require (List.exists (fun a->a.path=path) aliases) "external alias missing bound association") external_files

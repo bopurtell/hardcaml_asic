@@ -165,7 +165,7 @@ def main():
                 [helper, "--run-dir", str(run), "--output", str(output)] + (["--force"] if force else []),
                 capture_output=True, text=True)
             if result.returncode:
-                raise oracle.phase4.PrerequisiteError(result.stderr)
+                raise oracle.coarse_flow_oracle.PrerequisiteError(result.stderr)
             record = json.loads((output / "archive.json").read_text())
             # Public metadata sorts names; fixture expectations only use sets.
             return output / "reports.tar.gz", [(run / n, n) for n in record["members"]], record["omitted"]
@@ -173,7 +173,7 @@ def main():
         def native_list(run, output=print, diagnostics=None):
             result = subprocess.run([helper, "--run-dir", str(run), "--list"], capture_output=True, text=True)
             if result.returncode:
-                raise oracle.phase4.PrerequisiteError(result.stderr)
+                raise oracle.coarse_flow_oracle.PrerequisiteError(result.stderr)
             for line in result.stdout.splitlines():
                 output(line)
             (diagnostics or (lambda s: print(s, file=sys.stderr)))(result.stderr.rstrip("\n"))
@@ -339,7 +339,7 @@ def main():
             f = fixture()
             try:
                 f.update_manifest(change)
-                with unittest.TestCase().assertRaises((oracle.phase4.PrerequisiteError, KeyError, ValueError)):
+                with unittest.TestCase().assertRaises((oracle.coarse_flow_oracle.PrerequisiteError, KeyError, ValueError)):
                     real_list(f.run)
                 call(f.run, listing=True, ok=False)
                 call(f.run, f.output, ok=False)

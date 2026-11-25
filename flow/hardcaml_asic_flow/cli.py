@@ -29,7 +29,7 @@ from pathlib import Path
 import subprocess
 import sys
 
-from . import MINIMUM_PYTHON, archive as archiver, identity, paths, phase4, result_store
+from . import MINIMUM_PYTHON, archive as archiver, identity, paths, coarse_flow_oracle, result_store
 from . import report as reporter
 from . import execution_plan, runner, presentation
 
@@ -58,7 +58,7 @@ class Operations:
     """Delegation to the existing implementations, with no duplicated policy."""
 
     def __init__(self):
-        self.phase4 = phase4
+        self.coarse_flow_oracle = coarse_flow_oracle
         self.reporter = reporter
         self.archiver = archiver
 
@@ -97,7 +97,7 @@ class Operations:
         self.require_p6_5(args)
         outcome = result_store.preflight_operation(
             args.bundle, results_root=args.results_root, output=args.output,
-            probe=lambda: self.phase4.preflight(
+            probe=lambda: self.coarse_flow_oracle.preflight(
                 args.bundle, args.support_tools, args.pdk_root, args.python,
                 False, args.native))
         if args.json:
@@ -121,7 +121,7 @@ class Operations:
         from . import ocaml_backend
         try:
             return ocaml_backend.run(args)
-        except self.phase4.FlowInterrupted as exc:
+        except self.coarse_flow_oracle.FlowInterrupted as exc:
             raise ContractInterrupted(exc.signum) from exc
 
     def postcheck(self, args):
@@ -129,9 +129,9 @@ class Operations:
         from . import ocaml_backend
         try:
             return ocaml_backend.postcheck(args)
-        except self.phase4.FlowInterrupted as exc:
+        except self.coarse_flow_oracle.FlowInterrupted as exc:
             raise ContractInterrupted(exc.signum) from exc
-        except self.phase4.PrerequisiteError as exc:
+        except self.coarse_flow_oracle.PrerequisiteError as exc:
             raise ContractError(str(exc)) from exc
 
     def collect(self, args):
@@ -504,7 +504,7 @@ def unsupported_python():
 def outcome_diagnostics(outcome, operation, verbose=False):
     record = outcome.run_record if operation == "run" else outcome.check_record
     if Path(record).is_file():
-        payload = phase4.read_json(record)
+        payload = coarse_flow_oracle.read_json(record)
         if payload.get("error"):
             print(f"{operation}: {payload['error']}", file=sys.stderr)
         if verbose:

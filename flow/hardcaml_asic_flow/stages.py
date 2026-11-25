@@ -13,7 +13,7 @@ from pathlib import Path
 import shutil
 import uuid
 
-from . import checkpoint as checkpoints, execution_transport as transport, phase4, result_store
+from . import checkpoint as checkpoints, execution_transport as transport, coarse_flow_oracle, result_store
 from .execution_plan import StagePlan, BOUNDARIES, TESTED_IMAGE
 from . import backend_protocol as protocol
 
@@ -146,7 +146,7 @@ def prepare(*, bundle, support_tools, pdk_root, python, workspace, checkpoint_st
         raise ValueError("checkpoint store must be under the explicitly mounted workspace")
     if timeout <= 0:
         raise ValueError("segment timeout must be positive")
-    probe = lambda: phase4.preflight(bundle, support_tools, pdk_root, Path(python).absolute())
+    probe = lambda: coarse_flow_oracle.preflight(bundle, support_tools, pdk_root, Path(python).absolute())
     if preflight_output is None:
         report = probe()
     else:
@@ -162,7 +162,7 @@ def prepare(*, bundle, support_tools, pdk_root, python, workspace, checkpoint_st
     if binding["image_identity"]["image_id"] != TESTED_IMAGE:
         raise ValueError("explicit physical stages have only been tested with the declared exact image")
     project = workspace / "project"
-    manifest = phase4.read_json(bundle / "manifest.json")
+    manifest = coarse_flow_oracle.read_json(bundle / "manifest.json")
     bridge_source = Path(__file__).with_name("librelane_bridge.py")
     protocol_source = Path(__file__).with_name("backend_protocol.py")
     compatibility = {"bundle_identity": manifest["identity"], "target": manifest["target"],
@@ -174,8 +174,8 @@ def prepare(*, bundle, support_tools, pdk_root, python, workspace, checkpoint_st
         shutil.copytree(bundle, project)
         for ref in manifest["target"]["external_references"]:
             if ref["source"] == "Support_tools":
-                source = phase4.safe_child(support_tools, ref["path"])
-                target = phase4.safe_child(project / "tt", ref["path"])
+                source = coarse_flow_oracle.safe_child(support_tools, ref["path"])
+                target = coarse_flow_oracle.safe_child(project / "tt", ref["path"])
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(source, target)
         (project / "bridge").mkdir()
@@ -187,8 +187,8 @@ def prepare(*, bundle, support_tools, pdk_root, python, workspace, checkpoint_st
     # One immutable image identity per run; no per-segment preflight/tag resolution.
     record = {"binding": binding, "commands": [], "bridge_sha256": compatibility["bridge_sha256"]}
     record_path = workspace / ("transport-" + uuid.uuid4().hex + ".json")
-    phase4.save(record_path, record)
-    phase4.save(workspace / (record_path.stem + "-preflight.json"), report)
+    coarse_flow_oracle.save(record_path, record)
+    coarse_flow_oracle.save(workspace / (record_path.stem + "-preflight.json"), report)
 
     def launch(bridge, request, tag):
         name = transport.owned_name()
@@ -197,7 +197,7 @@ def prepare(*, bundle, support_tools, pdk_root, python, workspace, checkpoint_st
         argv = transport.docker_command(binding, workspace, pdk_root, name=name,
                                         workdir=project, pdk=manifest["target"]["technology"])
         argv += [*binding["interpreter_flags"], str(bridge), str(request)]
-        return phase4.run_logged(argv, project, transport.environment(), workspace / (tag + ".log"),
+        return coarse_flow_oracle.run_logged(argv, project, transport.environment(), workspace / (tag + ".log"),
                                  record, record_path, timeout=timeout,
                                  cleanup=lambda: transport.cleanup(binding, name))
 

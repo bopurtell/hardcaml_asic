@@ -292,7 +292,7 @@ def native_fixture(execution, directory, resolved):
                 sys.modules[k] = v
 
 
-with tempfile.TemporaryDirectory(prefix="pt7-named-reader-") as tmp:
+with tempfile.TemporaryDirectory(prefix="named-timing-reader-") as tmp:
     tmp = Path(tmp)
     bundle = tmp / "bundle"
     plan = call([EMITTER, bundle])
@@ -916,4 +916,4 @@ with tempfile.TemporaryDirectory(prefix="pt7-named-reader-") as tmp:
     call([INSPECT, legacy_execution, "--kind", "execution", "--json"], 2, "advertised producer is missing")
     assert call([INSPECT, execution, "--kind", "execution", "--json"], 1) == baseline
     assert all(p.read_bytes() == raw for p, raw in frozen.items())
-    print(f"PT7 named execution evidence: {COUNT} public/API checks passed; modeled native output, no EDA")
+    print(f"Named timing execution evidence: {COUNT} public/API checks passed; modeled native output, no EDA")

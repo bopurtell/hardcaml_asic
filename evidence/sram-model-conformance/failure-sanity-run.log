@@ -1,4 +1,0 @@
-working_directory=/home/wayne/devel/jane/hardcaml_asic
-command=timeout 30s vvp evidence/sram-model-conformance/failure-sanity.vvp 
-FATAL: /home/wayne/devel/jane/hardcaml_asic/experiments/sram_model_conformance/sram_model_conformance_tb.sv:158: intentional failure-path sanity check
-       Time: 1000  Scope: sram_model_conformance_tb

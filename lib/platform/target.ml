@@ -19,7 +19,7 @@
    gives the same record -> see test/test_target.ml;
 
    It does NOT open, fetch or hash any file; paths and hashes are recorded as given, and
-   checking them against a real checkout is P4 preflight. It does NOT look at the design
+   checking them against a real checkout is execution preflight. It does NOT look at the design
    either; TT top-level ports, metadata, pinout and timing are Elaboration.Resolved's job.
    Project.create still does not check the pair (see its TODO), so an unsupported pair is
    only caught when someone asks for a flow.
@@ -77,7 +77,7 @@ end
    corner   : operating corner; only the standard-cell Liberty view carries one;
 
    A reference is a promise about where a file should be, NOT evidence that it is there;
-   nothing in this module reads [path] or checks [sha256], that is P4 preflight.
+   nothing in this module reads [path] or checks [sha256], that is execution preflight.
    Bundle.reference_json writes these out as they are.
 *)
 module Reference = struct
@@ -139,7 +139,7 @@ end
    Careful: "should agree" above is not checked by anything. [validate_inputs] checks the
    shape of each field (hex, relative, finite), never whether a revision actually has
    that path, that hash or that die area. Inputs with a wrong hash or die area resolve
-   fine; nothing can notice before P4 preflight, the first step that opens the files.
+   fine; nothing can notice before execution preflight, the first step that opens the files.
 *)
 module Inputs = struct
   type t =
@@ -273,7 +273,7 @@ let valid_relative_path path =
    NOT checked: whether [driving_cell] is a cell the technology's Liberty actually
    defines, or whether [driving_cell_pin] is one of its output pins. This module opens no
    file, so a cell that does not exist validates fine here and is first caught when
-   OpenSTA reads the SDC; checking it against an installed PDK is P4 preflight work.
+   OpenSTA reads the SDC; checking it against an installed PDK is execution preflight work.
 *)
 let constraint_problems (constraints : Resource.Technology.Cmos5l.Constraints.t) =
   let blank value = String.is_empty (String.strip value) in
@@ -376,8 +376,7 @@ let validate_inputs (inputs : Inputs.t) =
   (* Checking with the above in a list format, fold any errors into the result;
 
      TODO (future fix): the first four messages are plain strings that do not say which
-     value was wrong (which revision, what path), against docs/development/comment_guidelines.md
-     section 9; attach the offending fields as labelled [%message] fields instead.
+     value was wrong (which revision, what path), against the structured diagnostic convention; attach the offending fields as labelled [%message] fields instead.
      Changing them changes expect test output (test/test_target.ml), so update those in
      the same commit;
   *)

@@ -9,7 +9,7 @@ expectations are hand-authored independently of the reducer. Passing JSON
 and reference checks alone is not executable contract acceptance or runtime publication proof.
 
 The governing boundaries are [architecture](../../../../docs/architecture.md),
-[active phase plan](../../../../docs/phase_plan.md), and the existing
+and the existing
 [execution/postcheck policy](../../../../docs/guides/flow.md). Current library
 names are `Elaborated_project` and `Resolved_flow`. `build-B` still denotes an
 immutable **emitted build identity**, not either in-memory library value.
@@ -416,7 +416,7 @@ error readiness. All seven JSON documents and five evidence files remain unchang
   Icarus `/usr/bin/iverilog` and `/usr/bin/vvp` were available: all four generated-RTL
   simulations ran, none skipped. The synthetic Git fixture used author and committer
   `Bundle test <bundle@test.invalid>`, isolated config/disabled hooks and no remotes;
-  see the [exact test environment](../../../../docs/phase_plan.md#provider-observation-fixture-acceptance).
+  the fixture was isolated from the developer’s Git configuration.
 
 This accepts the provisional logical fixtures only. Runtime locking, fsync/data
 durability, live catalog/correlation/step/result publication and LibreLane lifecycle

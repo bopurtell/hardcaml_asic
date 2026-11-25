@@ -8,7 +8,7 @@ copies and do not depend on the example checkout or its provider/PDK.
 The additional `native-continued-comment-excerpt.sdc` is B's independent
 A-NATIVE-R1 **Tcl-language counterexample**, not a native-writer capture. It keeps
 the exact two-line continued-comment spelling from
-`docs/development/pt7c-native-review.md`. `comment_check.py` sources it under
+the historical native timing review. `comment_check.py` sources it under
 ordinary `tclsh` with inert object/false-path procedures, observing zero exception
 calls, versus one for the ordinary-comment control. The production parser never
 sources it: pure and hash-consistent full-audit tests require an unsupported-

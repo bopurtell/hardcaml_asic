@@ -161,7 +161,7 @@ module Librelane = struct
     (* Checking with the above in a list format, fold any errors into the result;
 
        TODO (future fix): the duplicate message does not follow
-       docs/development/comment_guidelines.md section 9, which wants "what went wrong; how to fix it".
+       the structured diagnostic convention, which wants "what went wrong; how to fix it".
        Something like "LibreLane override key set more than once; keep one override per
        key". Changing it changes expect test output (test/test_lifecycle.ml), so update
        that in the same commit;

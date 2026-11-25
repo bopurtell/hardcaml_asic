@@ -15,14 +15,14 @@ of iverilog output) and every intermediate stage directory. Both are rebuildable
 from what is kept plus the pinned toolchain, and neither is read by a check.
 
 Careful: this does not write the README.md that sits beside the records in
-evidence/p4/*. That note is the human account of what the run showed, and a
+a human-curated archive directory. That note is the human account of what the run showed, and a
 generated stand-in would read as though someone had checked the result.
 
 Installed as `hardcaml-asic-flow archive`; `scripts/archive.py` is the checkout's
 adapter onto this same module.
 
 Usage:
-  hardcaml-asic-flow archive RUN_DIR --output evidence/p4/observable-physical
+  hardcaml-asic-flow archive RUN_DIR --output archives/observable-physical
   hardcaml-asic-flow archive RUN_DIR --output DIR --force  # replace a populated DIR
   hardcaml-asic-flow archive RUN_DIR --list                # the selection, writes nothing
 """
@@ -38,7 +38,7 @@ import sys
 import tarfile
 import tempfile
 
-from . import phase4
+from . import coarse_flow_oracle
 
 # Tar members, relative to the run directory. "{flow}" is run.json's outputs.flow
 # rather than a literal "project/runs/asic", so a run whose flow directory moved
@@ -92,7 +92,7 @@ def members(run_dir, flow):
         for part in path.relative_to(run_dir).parts:
             parent = parent / part
             if parent.is_symlink():
-                raise phase4.PrerequisiteError(
+                raise coarse_flow_oracle.PrerequisiteError(
                     f"archive selection contains a symlink: {name}")
         if not path.exists():
             omitted.append(name)
@@ -102,7 +102,7 @@ def members(run_dir, flow):
             found = []
             for child in sorted(path.rglob("*")):
                 if child.is_symlink():
-                    raise phase4.PrerequisiteError(
+                    raise coarse_flow_oracle.PrerequisiteError(
                         f"archive selection contains a symlink: {child.relative_to(run_dir)}")
                 if child.is_file():
                     found.append((child, str(child.relative_to(run_dir))))
@@ -119,11 +119,11 @@ def members(run_dir, flow):
 
 def safe_relative(relative, label="bundle path"):
     if not isinstance(relative, str) or not relative:
-        raise phase4.PrerequisiteError(f"invalid {label}: {relative!r}")
+        raise coarse_flow_oracle.PrerequisiteError(f"invalid {label}: {relative!r}")
     parts = relative.split("/")
     if (relative.startswith("/") or "\\" in relative
             or any(part in ("", ".", "..") for part in parts)):
-        raise phase4.PrerequisiteError(f"unsafe {label}: {relative!r}")
+        raise coarse_flow_oracle.PrerequisiteError(f"unsafe {label}: {relative!r}")
     return relative
 
 
@@ -134,12 +134,12 @@ def manifest_paths(manifest):
         relative = safe_relative(entry["path"])
         expected = entry["sha256"]
         if relative == "manifest.json":
-            raise phase4.PrerequisiteError("manifest.json must not list itself")
+            raise coarse_flow_oracle.PrerequisiteError("manifest.json must not list itself")
         if relative in inventory:
-            raise phase4.PrerequisiteError(f"duplicate bundle path: {relative}")
+            raise coarse_flow_oracle.PrerequisiteError(f"duplicate bundle path: {relative}")
         if (not isinstance(expected, str) or len(expected) != 64
                 or any(character not in "0123456789abcdef" for character in expected)):
-            raise phase4.PrerequisiteError(f"invalid SHA-256 for bundle path: {relative}")
+            raise coarse_flow_oracle.PrerequisiteError(f"invalid SHA-256 for bundle path: {relative}")
         inventory[relative] = expected
 
     for relative in inventory:
@@ -147,16 +147,16 @@ def manifest_paths(manifest):
         for index in range(1, len(parts)):
             parent = "/".join(parts[:index])
             if parent in inventory:
-                raise phase4.PrerequisiteError(
+                raise coarse_flow_oracle.PrerequisiteError(
                     f"conflicting bundle paths: {parent} and {relative}")
 
     for field in ("synthesis_sources", "simulation_sources"):
         sources = manifest[field]
         if len(sources) != len(set(sources)):
-            raise phase4.PrerequisiteError(f"duplicate path in {field}")
+            raise coarse_flow_oracle.PrerequisiteError(f"duplicate path in {field}")
         for relative in sources:
             if relative not in inventory:
-                raise phase4.PrerequisiteError(
+                raise coarse_flow_oracle.PrerequisiteError(
                     f"{field} path is absent from manifest files: {relative}")
 
     copies = set()
@@ -164,17 +164,17 @@ def manifest_paths(manifest):
         source_path = safe_relative(source["path"], "source input path")
         relative = safe_relative(source["copy"], "source input copy")
         if relative != f"inputs/{source_path}":
-            raise phase4.PrerequisiteError(
+            raise coarse_flow_oracle.PrerequisiteError(
                 f"source input copy does not match its source path: {relative}")
         if relative in copies:
-            raise phase4.PrerequisiteError(f"duplicate source input copy: {relative}")
+            raise coarse_flow_oracle.PrerequisiteError(f"duplicate source input copy: {relative}")
         copies.add(relative)
         if relative not in inventory or inventory[relative] != source["sha256"]:
-            raise phase4.PrerequisiteError(
+            raise coarse_flow_oracle.PrerequisiteError(
                 f"source input metadata disagrees with manifest files: {relative}")
     inventory_copies = {relative for relative in inventory if relative.startswith("inputs/")}
     if copies != inventory_copies:
-        raise phase4.PrerequisiteError(
+        raise coarse_flow_oracle.PrerequisiteError(
             "source input metadata does not enumerate every inputs/ file")
     return sorted(inventory.items())
 
@@ -185,39 +185,39 @@ def regular_bundle_file(root, relative):
     for part in relative.split("/"):
         path = path / part
         if path.is_symlink():
-            raise phase4.PrerequisiteError(f"bundle path is a symlink: {relative}")
+            raise coarse_flow_oracle.PrerequisiteError(f"bundle path is a symlink: {relative}")
     try:
         resolved = path.resolve(strict=True)
     except FileNotFoundError:
-        raise phase4.PrerequisiteError(f"missing bundle file: {relative}") from None
+        raise coarse_flow_oracle.PrerequisiteError(f"missing bundle file: {relative}") from None
     if not resolved.is_relative_to(root.resolve()) or not path.is_file():
-        raise phase4.PrerequisiteError(f"invalid bundle file: {relative}")
+        raise coarse_flow_oracle.PrerequisiteError(f"invalid bundle file: {relative}")
     return path
 
 
 def validate_bundle(root, record):
     if root.is_symlink():
-        raise phase4.PrerequisiteError(f"bundle root is a symlink: {root}")
+        raise coarse_flow_oracle.PrerequisiteError(f"bundle root is a symlink: {root}")
     manifest_path = root / "manifest.json"
     if manifest_path.is_symlink() or not manifest_path.is_file():
-        raise phase4.PrerequisiteError(f"missing regular bundle manifest: {manifest_path}")
-    manifest_sha256 = phase4.digest(manifest_path)
+        raise coarse_flow_oracle.PrerequisiteError(f"missing regular bundle manifest: {manifest_path}")
+    manifest_sha256 = coarse_flow_oracle.digest(manifest_path)
     if manifest_sha256 != record["manifest_sha256"]:
-        raise phase4.PrerequisiteError(
+        raise coarse_flow_oracle.PrerequisiteError(
             f"bundle manifest does not match the run record: {manifest_path}")
-    manifest = phase4.read_json(manifest_path)
+    manifest = coarse_flow_oracle.read_json(manifest_path)
     if manifest.get("schema_version") != 1 or manifest.get("adapter") != "LibreLane":
-        raise phase4.PrerequisiteError(
+        raise coarse_flow_oracle.PrerequisiteError(
             f"unsupported bundle schema or adapter: {manifest_path}")
     if manifest["identity"] != record["build_identity"]:
-        raise phase4.PrerequisiteError(
+        raise coarse_flow_oracle.PrerequisiteError(
             f"bundle identity does not match the run record: {manifest_path}")
     inventory = manifest_paths(manifest)
     files = []
     for relative, expected in inventory:
         path = regular_bundle_file(root, relative)
-        if phase4.digest(path) != expected:
-            raise phase4.PrerequisiteError(f"changed bundle file: {relative}")
+        if coarse_flow_oracle.digest(path) != expected:
+            raise coarse_flow_oracle.PrerequisiteError(f"changed bundle file: {relative}")
         files.append((path, relative))
     return manifest, files
 
@@ -236,9 +236,9 @@ def bundle_source(run_dir, record):
         try:
             manifest, files = validate_bundle(root, record)
             return kind, root, manifest, files
-        except (OSError, ValueError, KeyError, phase4.PrerequisiteError) as exc:
+        except (OSError, ValueError, KeyError, coarse_flow_oracle.PrerequisiteError) as exc:
             errors.append(f"{kind} bundle {root}: {exc}")
-    raise phase4.PrerequisiteError(
+    raise coarse_flow_oracle.PrerequisiteError(
         "no complete valid immutable bundle is available; " + "; ".join(errors))
 
 
@@ -251,16 +251,16 @@ def verify(run_dir, record, checks):
     """
     verified = {}
     staged = run_dir / record["outputs"]["project"] / "manifest.json"
-    digest = phase4.digest(staged)
+    digest = coarse_flow_oracle.digest(staged)
     if digest != record["manifest_sha256"]:
-        raise phase4.PrerequisiteError(
+        raise coarse_flow_oracle.PrerequisiteError(
             "staged manifest does not match the run record; archive the run that "
             f"produced it, not a modified copy ({staged})")
     verified["manifest_sha256"] = digest
 
-    staged_manifest = phase4.read_json(staged)
+    staged_manifest = coarse_flow_oracle.read_json(staged)
     if staged_manifest["identity"] != record["build_identity"]:
-        raise phase4.PrerequisiteError(
+        raise coarse_flow_oracle.PrerequisiteError(
             "staged manifest identity does not match the run record")
 
     # The GDS, netlist and testbench are hashed into postcheck.json when the
@@ -277,8 +277,8 @@ def verify(run_dir, record, checks):
             expected = inputs.get(field)
             if expected is None or not path.is_file():
                 continue
-            if phase4.digest(path) != expected:
-                raise phase4.PrerequisiteError(
+            if coarse_flow_oracle.digest(path) != expected:
+                raise coarse_flow_oracle.PrerequisiteError(
                     f"{path.relative_to(run_dir)} does not match {field} in "
                     f"{(check_dir / 'postcheck.json').relative_to(run_dir)}; the run "
                     "directory was modified after the checks ran")
@@ -312,15 +312,15 @@ def verify_input_bundle(path, record, inventory):
         members = stream.getmembers()
         names = [member.name for member in members]
         if len(names) != len(set(names)) or set(names) != set(expected):
-            raise phase4.PrerequisiteError("input bundle archive has conflicting members")
+            raise coarse_flow_oracle.PrerequisiteError("input bundle archive has conflicting members")
         for member in members:
             if not member.isfile():
-                raise phase4.PrerequisiteError(
+                raise coarse_flow_oracle.PrerequisiteError(
                     f"input bundle archive member is not a regular file: {member.name}")
             source = stream.extractfile(member)
             actual = hashlib.sha256(source.read()).hexdigest()
             if actual != expected[member.name]:
-                raise phase4.PrerequisiteError(
+                raise coarse_flow_oracle.PrerequisiteError(
                     f"input bundle archive member changed while packaging: {member.name}")
 
 
@@ -366,28 +366,28 @@ def publish(staging, output):
 
 
 def archive(run_dir, output, force):
-    record = phase4.read_json(run_dir / "run.json")
+    record = coarse_flow_oracle.read_json(run_dir / "run.json")
     if record["status"] != "completed":
-        raise phase4.PrerequisiteError(
+        raise coarse_flow_oracle.PrerequisiteError(
             f"run status is {record['status']}, not completed; archive a finished run")
     flow = record["outputs"]["flow"]
 
-    checks = [(path.parent, phase4.read_json(path))
+    checks = [(path.parent, coarse_flow_oracle.read_json(path))
               for path in sorted((run_dir / "checks").glob("*/postcheck.json"))]
     verified = verify(run_dir, record, checks)
     source_kind, bundle_root, bundle_manifest, bundle_files = bundle_source(run_dir, record)
     selected, omitted = members(run_dir, flow)
 
     if output.exists() and any(output.iterdir()) and not force:
-        raise phase4.PrerequisiteError(
+        raise coarse_flow_oracle.PrerequisiteError(
             f"{output} already has files; use --force to replace them")
     output.parent.mkdir(parents=True, exist_ok=True)
     staging = Path(tempfile.mkdtemp(prefix=f".{output.name}.archive-", dir=output.parent))
     try:
         manifest_source = bundle_root / "manifest.json"
         shutil.copyfile(manifest_source, staging / "manifest.json")
-        if phase4.digest(staging / "manifest.json") != record["manifest_sha256"]:
-            raise phase4.PrerequisiteError("manifest changed while copying it")
+        if coarse_flow_oracle.digest(staging / "manifest.json") != record["manifest_sha256"]:
+            raise coarse_flow_oracle.PrerequisiteError("manifest changed while copying it")
         for name in RECORDS:
             # An absent record is reported, never skipped quietly: runs from before
             # flow.sh saved preflight.json have none, and an evidence directory that
@@ -411,17 +411,17 @@ def archive(run_dir, output, force):
         input_bundle = staging / "input-bundle.tar.gz"
         write_input_bundle(input_bundle, manifest_source, bundle_files)
         verify_input_bundle(input_bundle, record, manifest_paths(bundle_manifest))
-        input_digest = phase4.digest(input_bundle)
+        input_digest = coarse_flow_oracle.digest(input_bundle)
         (staging / "input-bundle.sha256").write_text(
             f"{input_digest}  input-bundle.tar.gz\n")
         input_members = ["bundle/manifest.json"] + [
             f"bundle/{relative}" for _, relative in bundle_files]
 
-        phase4.save(staging / "archive.json", {
+        coarse_flow_oracle.save(staging / "archive.json", {
             "schema_version": 1,
             "run_id": record["run_id"],
             "build_identity": record["build_identity"],
-            "created_at": phase4.now(),
+            "created_at": coarse_flow_oracle.now(),
             "source_run": str(run_dir),
             "archive": reports.name,
             "archive_bytes": reports.stat().st_size,
@@ -453,11 +453,11 @@ def archive(run_dir, output, force):
 
 def list_archive(run_dir, output=print, diagnostics=None):
     diagnostics = diagnostics or (lambda *values: print(*values, file=sys.stderr))
-    record = phase4.read_json(run_dir / "run.json")
+    record = coarse_flow_oracle.read_json(run_dir / "run.json")
     if record["status"] != "completed":
-        raise phase4.PrerequisiteError(
+        raise coarse_flow_oracle.PrerequisiteError(
             f"run status is {record['status']}, not completed; list a finished run")
-    checks = [(path.parent, phase4.read_json(path))
+    checks = [(path.parent, coarse_flow_oracle.read_json(path))
               for path in sorted((run_dir / "checks").glob("*/postcheck.json"))]
     verify(run_dir, record, checks)
     selected, omitted = members(run_dir, record["outputs"]["flow"])
@@ -491,7 +491,7 @@ def main():
             list_archive(run_dir)
             return 0
         if not args.output:
-            raise phase4.PrerequisiteError("--output is required unless --list is given")
+            raise coarse_flow_oracle.PrerequisiteError("--output is required unless --list is given")
         tarball, selected, omitted = archive(run_dir, args.output.resolve(), args.force)
         for name in omitted:
             print(f"archive: absent, not included: {name}", file=sys.stderr)
@@ -499,7 +499,7 @@ def main():
               f"({tarball.stat().st_size / 1e6:.2f} MB)")
         return 0
     except (OSError, ValueError, KeyError, TypeError, AttributeError,
-            phase4.PrerequisiteError) as exc:
+            coarse_flow_oracle.PrerequisiteError) as exc:
         print(f"archive: {exc}", file=sys.stderr)
         return 2
 

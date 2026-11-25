@@ -1,8 +1,0 @@
-INFO: PDK_ROOT: /home/wayne/devel/jane/hardcaml_asic/.toolchain/pdk
-INFO: Tech: ihp-sg13cmos5l
-Traceback (most recent call last):
-  File "/home/wayne/devel/jane/hardcaml_asic/.toolchain/tt-sram-s3-cfa06bae/precheck/precheck.py", line 500, in <module>
-    main()
-  File "/home/wayne/devel/jane/hardcaml_asic/.toolchain/tt-sram-s3-cfa06bae/precheck/precheck.py", line 349, in main
-    raise PrecheckFailure("info.yaml not found")
-precheck_failure.PrecheckFailure: info.yaml not found

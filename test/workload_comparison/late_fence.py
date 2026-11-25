@@ -90,7 +90,7 @@ def main():
                 os.close(fd)
             source.write_bytes(original)
 
-    with tempfile.TemporaryDirectory(prefix='pt8-B-final-fence-') as tmp:
+    with tempfile.TemporaryDirectory(prefix='workload-final-fence-') as tmp:
         root = Path(tmp)
         l, lw, ls, lr = fixture(root / 'left', v, 'flops')
         r, rw, rs, rr = fixture(root / 'right', v, 'sram')

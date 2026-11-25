@@ -29,7 +29,7 @@ def main():
         receipts.append(dict(case=name, exit=p.returncode, error=p.stderr.strip(), stdout_bytes=len(p.stdout)))
         return p
 
-    with tempfile.TemporaryDirectory(prefix='pt8-B-alias-') as tmp:
+    with tempfile.TemporaryDirectory(prefix='workload-alias-') as tmp:
         root = Path(tmp)
         flow, _, _ = fixture(root)
         command = ['targets', 'coarse_run', root, 'coarse_run', root, '-', '-']

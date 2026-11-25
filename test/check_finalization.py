@@ -65,7 +65,7 @@ if mode.get('mutate'):
 
 def suite(cli,consumer,package,fixtures,public=None):
     sys.path.insert(0,str(package.parent));sys.path.insert(0,str(fixtures))
-    from hardcaml_asic_flow import finalization,phase4,checkpoint,backend_protocol,report,presentation,cli as public_cli,ocaml_backend
+    from hardcaml_asic_flow import finalization,coarse_flow_oracle,checkpoint,backend_protocol,report,presentation,cli as public_cli,ocaml_backend
     import test_finalization
     count=0
     original_setup=test_finalization.FinalizationTest.setUp
@@ -115,7 +115,7 @@ def suite(cli,consumer,package,fixtures,public=None):
         (f.support/'precheck/precheck.py').write_text('')
     def native(f,accept=False,mode=None,extra=(),public_call=False):
         (f.root/'mode.json').write_text(json.dumps(mode or {}))
-        phase4.save(f.support/'precheck/tool-versions.json',{'klayout':'0.28.17'})
+        coarse_flow_oracle.save(f.support/'precheck/tool-versions.json',{'klayout':'0.28.17'})
         if public_call:
             base=[str(public)] if public else [sys.executable,'-B','-m','hardcaml_asic_flow']
             base+=['finalize',str(f.execution),'--operation-store',str(f.root/'native'),'--json']
@@ -153,7 +153,7 @@ def suite(cli,consumer,package,fixtures,public=None):
             assert actual[key]==expected[key],(key,actual[key],expected[key],actual.get('error'))
         if expected['results'] is not None:
             from resource_evidence_compat import collection_expected, historical_human
-            exp=collection_expected(phase4.read_json(expected_dir/'results.json'));act=phase4.read_json(actual_dir/'results.json')
+            exp=collection_expected(coarse_flow_oracle.read_json(expected_dir/'results.json'));act=coarse_flow_oracle.read_json(actual_dir/'results.json')
             def normalize(v):
                 return json.loads(json.dumps(v,ensure_ascii=False).replace(str(actual_dir),str(expected_dir)).replace(actual['attempt_id'],expected['attempt_id']))
             for key in ('metrics','synthesis_checks','checks','provenance'):
@@ -165,7 +165,7 @@ def suite(cli,consumer,package,fixtures,public=None):
                 output=[];code=report.report(actual_dir,act,'segmented mapped evidence',context=actual['evidence_context'],output=output.append)
                 assert code==actual['exit_code'] and historical_human((actual_dir/'acceptance.txt').read_text())=='\n'.join(output)+'\n'
         if before==f.execution.read_bytes(): assert before==f.execution.read_bytes()
-        phase4.save(f.support/'precheck/tool-versions.json',{'klayout':'fixture'})
+        coarse_flow_oracle.save(f.support/'precheck/tool-versions.json',{'klayout':'fixture'})
         count+=1
         return expected_dir,expected
     from hardcaml_asic_flow import result_store
@@ -180,19 +180,19 @@ def suite(cli,consumer,package,fixtures,public=None):
             # Failures are allocated and persisted before any runtime launch.
             for value in ({},dict(original,exit_code=True),dict(original,occurrences=[]),dict(original,artifacts=[]),
                           dict(original,plan=test_finalization.plans.resolve_stages('signoff',resume=True,initial_boundary='synthesis').as_dict())):
-                phase4.save(f.execution,value);_,receipt=native(f);assert receipt['status']=='failed' and receipt['results'] is None
-            phase4.save(f.execution,original)
+                coarse_flow_oracle.save(f.execution,value);_,receipt=native(f);assert receipt['status']=='failed' and receipt['results'] is None
+            coarse_flow_oracle.save(f.execution,original)
             for path in ('relative','/no/such/checkpoint',original['artifacts'][0]['path']+'\x00'):
-                value=copy.deepcopy(original);value['artifacts'][0]['path']=path;phase4.save(f.execution,value)
+                value=copy.deepcopy(original);value['artifacts'][0]['path']=path;coarse_flow_oracle.save(f.execution,value)
                 _,receipt=native(f);assert receipt['status']=='failed' and receipt['results'] is None
-            phase4.save(f.execution,original)
+            coarse_flow_oracle.save(f.execution,original)
             first=Path(original['artifacts'][0]['path']);manifest=first/'manifest.json';manifest.chmod(0o644);saved=manifest.read_bytes()
             legacy=json.loads(saved);legacy['schema_version']=1
             for key in ('restart_targets','tested_image_id','closure_scope'):del legacy[key]
             legacy['identity']=checkpoint.identity({k:v for k,v in legacy.items() if k!='identity'})
-            manifest.write_text(json.dumps(legacy));value=copy.deepcopy(original);value['artifacts'][0]['identity']=legacy['identity'];phase4.save(f.execution,value)
+            manifest.write_text(json.dumps(legacy));value=copy.deepcopy(original);value['artifacts'][0]['identity']=legacy['identity'];coarse_flow_oracle.save(f.execution,value)
             _,receipt=native(f);assert receipt['status']=='failed' and 'schema 2' in receipt['error'],receipt['error']
-            manifest.write_bytes(saved);phase4.save(f.execution,original)
+            manifest.write_bytes(saved);coarse_flow_oracle.save(f.execution,original)
             manifests={Path(item['path'])/'manifest.json':(Path(item['path'])/'manifest.json').read_bytes() for item in original['artifacts']}
             bad=copy.deepcopy(f.binding);bad['engine_identity']['executable']='relative'
             for binding in (None,dict(f.binding,schema_version=True),bad,{'schema_version':1,'execution_mode':'native','interpreter':sys.executable,'interpreter_flags':['-I','-B']}):
@@ -200,16 +200,16 @@ def suite(cli,consumer,package,fixtures,public=None):
                 for artifact in value['artifacts']:
                     p=Path(artifact['path'])/'manifest.json';p.chmod(0o644);m=json.loads(manifests[p]);m['compatibility']['binding']=binding
                     m['identity']=checkpoint.identity({k:v for k,v in m.items() if k!='identity'});p.write_text(json.dumps(m));artifact['identity']=m['identity']
-                phase4.save(f.execution,value);_,receipt=native(f);assert receipt['status']=='failed' and receipt['results'] is None
+                coarse_flow_oracle.save(f.execution,value);_,receipt=native(f);assert receipt['status']=='failed' and receipt['results'] is None
             for p,data in manifests.items():p.write_bytes(data)
-            phase4.save(f.execution,original)
+            coarse_flow_oracle.save(f.execution,original)
             _,receipt=native(f,extra=['--store',str(f.root/'colon:store')]);assert receipt['status']=='failed' and receipt['results'] is None
             for case in ('missing','wrong_request','wrong_version','failed','changed_bytes','nonzero','interrupt'):
                 _,receipt=native(f,mode={'case':case});assert receipt['status']==('interrupted' if case=='interrupt' else 'failed')
                 assert receipt['results'] is None
             for mode in ({'engine':True},{'image':True},{'cleanup_fail':True},{'mutate':str(f.execution)}):
                 _,receipt=native(f,mode=mode);assert receipt['status']=='failed' and receipt['results'] is None
-                phase4.save(f.execution,original)
+                coarse_flow_oracle.save(f.execution,original)
             # Byte-pinned resources, including bridge control changes, fail before launch.
             for name in ('librelane_bridge.py','backend_protocol.py'):
                 p=f.project/'bridge'/name;before=p.read_bytes();p.write_bytes(before+b'\n')
@@ -244,7 +244,7 @@ def suite(cli,consumer,package,fixtures,public=None):
             # Schema/lifecycle validation compared with the actual historical reader.
             for value in (dict(receipt,acceptance='pass'),dict(receipt,schema_version=True),dict(receipt,schema_version=1.0),
                           dict(receipt,exit_code=True),dict(receipt,ended_at=None),dict(receipt,extra='unknown')):
-                phase4.save(directory/'operation.json',value)
+                coarse_flow_oracle.save(directory/'operation.json',value)
                 try:finalization.inspect(directory)
                 except ValueError:pass
                 else:raise AssertionError(value)
@@ -253,13 +253,13 @@ def suite(cli,consumer,package,fixtures,public=None):
             (directory/'operation.json').write_bytes(snap)
             historical=copy.deepcopy(receipt);historical['binding']={'historical':'unsupported current runtime'}
             historical['selected_checkpoints'][0]['path']='/not-present-historical-checkpoint'
-            phase4.save(directory/'operation.json',historical)
+            coarse_flow_oracle.save(directory/'operation.json',historical)
             r=subprocess.run([str(consumer),'inspect',str(directory)],text=True,capture_output=True)
             assert r.returncode==0 and json.loads(r.stdout)==historical
             (directory/'operation.json').write_bytes(snap)
             for value in (dict(receipt,status='failed',exit_code=10**100),dict(receipt,status='running',ended_at=None,**{})):
                 if value['status']=='running':del value['exit_code']
-                phase4.save(directory/'operation.json',value);expected=finalization.inspect(directory)
+                coarse_flow_oracle.save(directory/'operation.json',value);expected=finalization.inspect(directory)
                 r=subprocess.run([str(consumer),'inspect',str(directory)],text=True,capture_output=True)
                 assert r.returncode==0 and json.loads(r.stdout)==expected
             (directory/'operation.json').write_bytes(snap)
@@ -277,7 +277,7 @@ def suite(cli,consumer,package,fixtures,public=None):
                     assert p.returncode==128+signum and v['status']=='interrupted',(stdout,stderr)
             for phase in ('compile','replay'):
                 (f.root/'blocked').unlink(missing_ok=True);(f.root/'mode.json').write_text(json.dumps({'block':phase}))
-                phase4.save(f.support/'precheck/tool-versions.json',{'klayout':'0.28.17'})
+                coarse_flow_oracle.save(f.support/'precheck/tool-versions.json',{'klayout':'0.28.17'})
                 p=subprocess.Popen([str(cli),'--execution',str(f.execution),'--store',str(f.root/'signals'),'--json','--accept',
                     '--support-tools',str(f.support),'--precheck-python',str(f.python),'--testbench',str(f.bench),'--testbench-top','replay'],
                     env=f.native_env,text=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
@@ -299,7 +299,7 @@ def suite(cli,consumer,package,fixtures,public=None):
             value=copy.deepcopy(f.value)
             value.update(plan=dict(schema_version=4,stages=['synthesis'],initial_boundary=None),
                          artifacts=value['artifacts'][:1],occurrences=value['occurrences'][:1])
-            phase4.save(f.execution,value)
+            coarse_flow_oracle.save(f.execution,value)
             checkpoint_dir=Path(value['artifacts'][0]['path'])
             # Published checkpoint bytes remain immutable; absent mapped physical
             # outputs below prove the synthesis-only collection scope.
@@ -323,7 +323,7 @@ def suite(cli,consumer,package,fixtures,public=None):
             result=subprocess.run([str(cli),'--execution',str(f.execution),'--store',str(f.root/'strict-accept'), '--json','--accept'],
                                   env=f.native_env,text=True,capture_output=True,timeout=30)
             assert result.returncode!=0 and 'does not support --accept' in result.stdout
-            phase4.save(f.execution,f.value)
+            coarse_flow_oracle.save(f.execution,f.value)
             result=subprocess.run([str(cli),'--execution',str(f.execution),'--store',str(f.root/'strict-physical'), '--json'],
                                   env=f.native_env,text=True,capture_output=True,timeout=30)
             assert result.returncode!=0 and 'complete fresh recipe' in result.stdout
@@ -335,7 +335,7 @@ def suite(cli,consumer,package,fixtures,public=None):
         assert subprocess.run([str(consumer),'select',str(execution)],capture_output=True).returncode==0
         r=subprocess.run([str(consumer),'normalize',str(RETAINED)],text=True,capture_output=True);assert r.returncode==0,r.stderr
         from resource_evidence_compat import collection_expected
-        actual=json.loads(r.stdout);expected=collection_expected(phase4.collect(RETAINED,context=receipt['evidence_context'],synthesis_state=RETAINED/'evidence/synthesis-state.json'))
+        actual=json.loads(r.stdout);expected=collection_expected(coarse_flow_oracle.collect(RETAINED,context=receipt['evidence_context'],synthesis_state=RETAINED/'evidence/synthesis-state.json'))
         assert actual['results']==expected and actual['exit_code']==report.report(RETAINED,expected,'fixture',context=receipt['evidence_context'],output=lambda _:None)==0
         assert snapshot(RETAINED)==before and hashlib.sha256(execution.read_bytes()).hexdigest()==source_before
         print('retained accepted finalization and source execution: read-only selection/normalization/policy parity')
@@ -348,7 +348,7 @@ def main():
     root=Path(__file__).resolve().parents[1]
     if a.real_smoke:
         sys.path.insert(0,str(root/'flow'))
-        from hardcaml_asic_flow import finalization,phase4,checkpoint,report
+        from hardcaml_asic_flow import finalization,coarse_flow_oracle,checkpoint,report
         receipt=finalization.inspect(RETAINED);execution=Path(receipt['execution']['path'])
         value,compatibility,pubs=finalization.selected(execution)
         inputs={execution,*(RETAINED.rglob('*'))}
@@ -363,17 +363,17 @@ def main():
         actual=json.loads(r.stdout.splitlines()[-1]);directory=Path(actual.pop('attempt'))
         assert actual['status']=='completed' and actual['acceptance']=='not_evaluated' and not (directory/'run.json').exists()
         from resource_evidence_compat import collection_expected
-        expected=collection_expected(phase4.collect(directory,context=actual['evidence_context'],synthesis_state=directory/'evidence/synthesis-state.json'))
+        expected=collection_expected(coarse_flow_oracle.collect(directory,context=actual['evidence_context'],synthesis_state=directory/'evidence/synthesis-state.json'))
         expected['provenance']={'contract':finalization.CONTRACT,'operation':str(directory/'operation.json'),
             'selected_evidence':actual['selected_evidence'],'adapter':actual['adapter']}
         for group in ('metrics','synthesis_checks','checks'):
             for item in expected[group].values():item['origin_boundary']='synthesis' if item['stage']=='Yosys.Synthesis' else 'signoff'
-        assert phase4.read_json(directory/'results.json')==expected
+        assert coarse_flow_oracle.read_json(directory/'results.json')==expected
         consumer=(a.consumer or root/'_build/default/test/finalization_consumer.exe').resolve()
         normalized=subprocess.run([str(consumer),'normalize',str(directory)],text=True,capture_output=True);assert normalized.returncode==0,normalized.stderr
         assert json.loads(normalized.stdout)['exit_code']==report.report(directory,expected,'segmented mapped evidence',context=actual['evidence_context'],output=lambda _:None)==1
         import csv,io
-        stream=io.StringIO(newline='');csv.writer(stream).writerows(sorted(phase4.read_json(directory/'evidence/signoff-state.json')['metrics'].items()))
+        stream=io.StringIO(newline='');csv.writer(stream).writerows(sorted(coarse_flow_oracle.read_json(directory/'evidence/signoff-state.json')['metrics'].items()))
         assert (directory/'evidence/final/metrics.csv').read_bytes()==stream.getvalue().encode()
         assert {p:checkpoint.file_record(p) for p in before}==before
         print('real exact-image closure validation + native collection, Python bytes/normalization/policy parity:',directory)

@@ -1,5 +1,0 @@
-working_directory=/home/wayne/devel/jane/hardcaml_asic
-command=timeout 30s vvp evidence/sram-model-conformance/functional.vvp 
-RESULT vectors=23 checks=86 failures=0
-PASS exact candidate satisfies the checked portable RAM functional contract
-/home/wayne/devel/jane/hardcaml_asic/experiments/sram_model_conformance/sram_model_conformance_tb.sv:205: $finish called at 235100 (1ps)

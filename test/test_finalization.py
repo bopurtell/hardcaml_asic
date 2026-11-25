@@ -11,7 +11,7 @@ import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, os.environ.get("STAGE_TEST_PACKAGE_ROOT", str(Path(__file__).resolve().parents[1] / "flow")))
-from hardcaml_asic_flow import backend_protocol as protocol, checkpoint as cp, cli, execution_plan as plans, finalization as final, phase4, result_store
+from hardcaml_asic_flow import backend_protocol as protocol, checkpoint as cp, cli, execution_plan as plans, finalization as final, coarse_flow_oracle, result_store
 
 
 class FinalizationTest(unittest.TestCase):
@@ -30,7 +30,7 @@ class FinalizationTest(unittest.TestCase):
         self.compat = {"binding": self.binding, "project": str(self.project), "pdk_root": str(self.root / "pdk"),
             "bridge_sha256": "a" * 64, "bundle_identity": "fixture", "requested_tools": {"librelane": "fixture"},
             "target": {"technology": "ihp-sg13cmos5l"}}
-        phase4.save(self.project / "manifest.json", {"identity": "fixture", "top_module": "fixture_top"})
+        coarse_flow_oracle.save(self.project / "manifest.json", {"identity": "fixture", "top_module": "fixture_top"})
         (self.project / "info.yaml").write_text("project: {top_module: fixture_top}\n")
         self.store = self.root / "checkpoints"
         self.store.mkdir()
@@ -49,12 +49,12 @@ class FinalizationTest(unittest.TestCase):
             "status": "completed", "exit_code": 0, "artifacts": artifacts,
             "occurrences": [{"action_key": "implementation." + b, "status": "completed", "exit_code": 0,
                              "occurrence_id": "original/implementation." + b} for b in plans.STAGE_ORDER]}
-        phase4.save(self.execution, self.value)
+        coarse_flow_oracle.save(self.execution, self.value)
         self.support = self.root / "tt"
         (self.support / "precheck").mkdir(parents=True)
         (self.support / "tech").mkdir()
         (self.support / "precheck/default.nix").write_text("{}")
-        phase4.save(self.support / "precheck/tool-versions.json", {"klayout": "fixture"})
+        coarse_flow_oracle.save(self.support / "precheck/tool-versions.json", {"klayout": "fixture"})
         self.python = self.root / "python"
         self.python.write_text("fixture Python")
         self.bench = self.root / "bench.v"
@@ -81,11 +81,11 @@ class FinalizationTest(unittest.TestCase):
         state = {key: str(view) for key in ("nl", "json_h", "odb", "def", "gds", "lef")}
         state["metrics"] = metrics if metrics is not None else (
             self.synth_metrics if boundary == "synthesis" else self.final_metrics)
-        phase4.save(candidate / "state.json", state)
-        phase4.save(candidate / "resolved.json", {"fixture": True})
-        phase4.save(candidate / "closure.json", {str(self.project / "manifest.json"):
+        coarse_flow_oracle.save(candidate / "state.json", state)
+        coarse_flow_oracle.save(candidate / "resolved.json", {"fixture": True})
+        coarse_flow_oracle.save(candidate / "closure.json", {str(self.project / "manifest.json"):
                                                    cp.file_record(self.project / "manifest.json")})
-        phase4.save(candidate / "segment.json", {"status": "completed", "boundary": boundary,
+        coarse_flow_oracle.save(candidate / "segment.json", {"status": "completed", "boundary": boundary,
             "bridge_sha256": self.compat["bridge_sha256"], "metrics": {}})
         return cp.publish(candidate, self.store, compatibility=self.compat, boundary=boundary)
 
@@ -98,12 +98,12 @@ class FinalizationTest(unittest.TestCase):
                 return gate
             return precheck if argv[0] == "nix-shell" else 0
         with patch.object(final, "runtime_validate", side_effect=runtime_error), \
-             patch.object(phase4, "command_output", side_effect=output), \
-             patch.object(phase4, "run_logged", side_effect=logged), \
+             patch.object(coarse_flow_oracle, "command_output", side_effect=output), \
+             patch.object(coarse_flow_oracle, "run_logged", side_effect=logged), \
              patch.object(final.transport, "verify_engine", return_value=self.binding["engine_identity"]), \
              patch.object(final.transport, "verify_image", return_value=plans.TESTED_IMAGE), \
              patch.object(final.transport, "cleanup"), \
-             patch.object(phase4.runtime_observation, "output", return_value="Icarus fixture"):
+             patch.object(coarse_flow_oracle.runtime_observation, "output", return_value="Icarus fixture"):
             if public_cli:
                 output_stream = io.StringIO()
                 with patch("sys.stdout", output_stream):
@@ -126,7 +126,7 @@ class FinalizationTest(unittest.TestCase):
         self.assertNotEqual(receipt["attempt_id"], self.value["attempt_id"])
         self.assertFalse((directory / "run.json").exists())
         self.assertEqual(self.execution.read_bytes(), original)
-        result = phase4.read_json(directory / "results.json")
+        result = coarse_flow_oracle.read_json(directory / "results.json")
         self.assertEqual(result["metrics"]["setup_slack"]["corner"], "slow")
         self.assertEqual(result["metrics"]["mapped_area"]["origin_boundary"], "synthesis")
         self.assertEqual(len(receipt["selected_checkpoints"]), 7)
@@ -135,7 +135,7 @@ class FinalizationTest(unittest.TestCase):
     def test_accept_uses_real_shared_policy_and_exact_simulator(self):
         directory, receipt = self.invoke(accept=True)
         self.assertEqual(receipt["acceptance"], "pass")
-        checks = phase4.read_json(Path(receipt["postcheck_record"]))
+        checks = coarse_flow_oracle.read_json(Path(receipt["postcheck_record"]))
         self.assertEqual(checks["tools"]["execution_binding"], self.binding)
         self.assertEqual(checks["inputs"]["replay_trace_sha256"], cp.digest(self.trace))
         self.assertIn(plans.TESTED_IMAGE, checks["commands"][-1])
@@ -163,14 +163,14 @@ class FinalizationTest(unittest.TestCase):
             with self.subTest(field=field):
                 metrics = dict(self.final_metrics, **{field: value})
                 self.value["artifacts"][-1] = self.publication("signoff", metrics)
-                phase4.save(self.execution, self.value)
+                coarse_flow_oracle.save(self.execution, self.value)
                 _, receipt = self.invoke(accept=True)
                 self.assertEqual(receipt["acceptance"], "fail")
 
     def test_missing_or_malformed_execution_retains_failed_receipt(self):
         for value in ({}, dict(self.value, artifacts=[]), dict(self.value, status="failed"),
                       dict(self.value, plan=plans.resolve_stages("routing").as_dict())):
-            phase4.save(self.execution, value)
+            coarse_flow_oracle.save(self.execution, value)
             _, receipt = self.invoke()
             self.assertEqual(receipt["status"], "failed")
             self.assertEqual(receipt["acceptance"], "not_evaluated")
@@ -178,7 +178,7 @@ class FinalizationTest(unittest.TestCase):
 
     def test_identity_mismatch(self):
         self.value["artifacts"][-1]["identity"] = "0" * 64
-        phase4.save(self.execution, self.value)
+        coarse_flow_oracle.save(self.execution, self.value)
         _, receipt = self.invoke()
         self.assertIn("identity", receipt["error"])
 
@@ -225,7 +225,7 @@ class FinalizationTest(unittest.TestCase):
                     return 1 if case == "nonzero" else 0
                 with patch.object(final.transport, "verify_engine"), \
                      patch.object(final.transport, "verify_image"), \
-                     patch.object(phase4, "run_logged", side_effect=logged):
+                     patch.object(coarse_flow_oracle, "run_logged", side_effect=logged):
                     if case == "valid":
                         final.runtime_validate(compatibility, [(publication, {})], directory, {"commands": []})
                     else:
@@ -234,7 +234,7 @@ class FinalizationTest(unittest.TestCase):
         bridge.with_name("backend_protocol.py").write_text("mutated resource")
         with patch.object(final.transport, "verify_engine"), \
              patch.object(final.transport, "verify_image"), \
-             patch.object(phase4, "run_logged") as launch:
+             patch.object(coarse_flow_oracle, "run_logged") as launch:
             with self.assertRaisesRegex(ValueError, "backend protocol"):
                 final.runtime_validate(compatibility, [(publication, {})], self.root, {"commands": []})
             launch.assert_not_called()
@@ -265,17 +265,17 @@ class FinalizationTest(unittest.TestCase):
             if field.startswith("timing"):
                 del metrics["timing__setup__ws"]
             self.value["artifacts"][-1] = self.publication("signoff", metrics)
-            phase4.save(self.execution, self.value)
+            coarse_flow_oracle.save(self.execution, self.value)
             _, receipt = self.invoke(accept=True)
             self.assertEqual(receipt["acceptance"], "fail")
 
     def test_selection_changed_during_check_fails_closed(self):
         def changed(*args, **kwargs):
             self.value["artifacts"] = []
-            phase4.save(self.execution, self.value)
-            phase4.save(self.root / "unused.json", {"fixture": "changed selection"})
-            return phase4.CheckOutcome("fixture", self.root, self.root / "unused.json", "completed", 0)
-        with patch.object(phase4, "check", side_effect=changed):
+            coarse_flow_oracle.save(self.execution, self.value)
+            coarse_flow_oracle.save(self.root / "unused.json", {"fixture": "changed selection"})
+            return coarse_flow_oracle.CheckOutcome("fixture", self.root, self.root / "unused.json", "completed", 0)
+        with patch.object(coarse_flow_oracle, "check", side_effect=changed):
             _, receipt = self.invoke(accept=True)
         self.assertEqual(receipt["status"], "failed")
         self.assertEqual(receipt["acceptance"], "not_evaluated")
@@ -286,7 +286,7 @@ class FinalizationTest(unittest.TestCase):
         self.assertEqual(final.inspect(directory), receipt)
         self.assertEqual((directory / "operation.json").read_bytes(), original)
         receipt["acceptance"] = "pass"
-        phase4.save(directory / "operation.json", receipt)
+        coarse_flow_oracle.save(directory / "operation.json", receipt)
         with self.assertRaisesRegex(ValueError, "unearned"):
             final.inspect(directory)
 

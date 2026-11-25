@@ -1,2 +1,0 @@
-PASS SRAM flow probe behavioral fixture: 4 checks
-/home/wayne/devel/jane/hardcaml_asic/experiments/sram_flow_feasibility/tt_um_sram_probe_tb.sv:58: $finish called at 130100 (1ps)

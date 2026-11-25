@@ -9,7 +9,7 @@ import tempfile
 
 hidden = Path(sys.argv[1]).read_text()
 assert hidden == '# harmless-looking continued comment \\\nset_false_path -from [get_ports {ena}] -to [get_pins {u0/D}]\n'
-with tempfile.TemporaryDirectory(prefix="pt7c-comment-language-") as root:
+with tempfile.TemporaryDirectory(prefix="native-comment-language-") as root:
     root = Path(root)
     oracle = root / "oracle.tcl"
     oracle.write_text('''set calls 0
@@ -30,4 +30,4 @@ puts $calls
         result = subprocess.run(["tclsh", str(oracle), str(source)], text=True,
                                 capture_output=True, check=True, timeout=10)
         assert result.stdout == expected, (name, result)
-print("PT7c independent tclsh comment-language controls passed (no EDA)")
+print("Native timing independent tclsh comment-language controls passed (no EDA)")

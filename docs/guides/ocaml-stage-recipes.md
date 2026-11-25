@@ -38,7 +38,7 @@ and timeout remain request facts outside the plan hash. CLI contract version sta
 4; `--json --version` advertises `cli_contract.capabilities.namedflow1: true`.
 
 The native parser uses main-library plan validation and derives the ordinary
-schema-3 prefix from the frozen closed backend contract. It checks the actual
+schema-4 prefix from the frozen closed backend contract. It checks the actual
 bundle manifest identity, settings/config bytes, all inventory digests and source
 input associations before probes or staging. It does not consult current consumer
 catalogs or reinterpret plan data as executable commands.
@@ -56,8 +56,7 @@ changing the original PLANFILE has no effect; removing or changing the reference
 snapshot is an error. `Stage_execution_record.methodology` and
 `Methodology_execution_record.plan` expose the checked historical snapshot to later
 consumers. Historical execution JSON without the optional field keeps its old
-encoding. See the [slice 4 handoff](../development/project-flow-catalog-progress.md#bounded-slice-4-native-enforcement-and-immutable-attempt-evidence-2026-10-15)
-for the precise record fields and evidence boundary.
+encoding.
 
 ### Historical reports and observation inspection
 
@@ -91,19 +90,19 @@ open Hardcaml_asic
 let recipe =
   Flow.Recipe.create
     ~initial_boundary:Flow.Stage.Floorplan
-    [ Flow.Stage.Placement; Cts; Routing; Signoff ]
+    [ Flow.Stage.Placement; Cts; Routing; Timing; Signoff ]
   |> Or_error.ok_exn
 
 let () = printf "%s\n" (Flow.Recipe.to_string recipe)
 ```
 
-This renders exactly schema 3:
+This renders exactly schema 4:
 
 ```json
-{"schema_version":3,"stages":["placement","cts","routing","signoff"],"initial_boundary":"floorplan"}
+{"schema_version":4,"stages":["placement","cts","routing","timing","signoff"],"initial_boundary":"floorplan"}
 ```
 
-- `Flow.Stage.t`: `Synthesis | Floorplan | Placement | Cts | Routing | Signoff`.
+- `Flow.Stage.t`: `Synthesis | Floorplan | Placement | Cts | Routing | Timing | Signoff`.
   `all`, `to_string`, and strict lowercase `of_string` support command frontends.
 - `Flow.Stage.capability`: exact backend endpoint, immediate successor,
   standalone restart targets, tested image ID, typed `Path_bound` closure scope
@@ -113,26 +112,26 @@ This renders exactly schema 3:
   A fresh recipe begins at synthesis. A resume begins immediately after its
   declared source. Repeats, reversal and omissions return `Or_error` before I/O.
 - `Flow.Recipe.through ?initial_boundary endpoint`: endpoint shorthand, expanded
-  to the same schema-3 sequence. `through Signoff` includes all six stages;
+  to the same schema-4 sequence. `through Signoff` includes all seven stages;
   `through ~initial_boundary:Floorplan Placement` includes placement only.
   Endpoints at/before the source and terminal sources return errors.
 - `Flow.Recipe.compose first second`: joins declarations when the second source
   equals the first endpoint, retaining the first source. For example,
   `through Floorplan` composed with `through ~initial_boundary:Floorplan Signoff`
-  gives the fresh six-stage recipe. This does not stitch historical executions.
+  gives the fresh seven-stage recipe. This does not stitch historical executions.
 - `stages`, `initial_boundary`, `endpoint`, `required_input`, `declarations` expose
   typed facts. Inputs are `Input.Bundle` or `Input.Checkpoint stage`; each ordered
   declaration names its stage, predecessor input and output checkpoint boundary.
   A boundary requirement does not prove readiness of any checkpoint directory.
-- `to_yojson` and `to_string` emit only the three strict schema-3 fields. Recipes
+- `to_yojson` and `to_string` emit only the three strict schema-4 fields. Recipes
   are abstract: callers cannot forge an unchecked record. There is no raw backend
    JSON argument or per-stage settings API.
 
 Composable recipes always include every intervening boundary, matching the
-provider's contiguous schema-3 contract (going directly from synthesis to placement
+provider's contiguous schema-4 contract (going directly from synthesis to placement
 is only a standalone segment capability). Backend successor checkers stay
 included: CTS ends at `OpenROAD.CTS` and its later STA/repair work begins routing;
-routing ends at detailed routing and its checkers/fill/extraction begin signoff.
+routing ends at detailed routing and its checkers/fill/extraction and extracted STA belong to Timing.
 The retired Python `execution_plan` module is no longer installed; use this API or
 `stages --plan`.
 
@@ -148,7 +147,7 @@ recipe schemas remain compatible.
 | Source | Namespace / responsibility |
 | --- | --- |
 | `flow_domain/stage_id.ml`, `registry.ml` | IDs/order and domain operations/restart targets |
-| `flow_domain/stages/{synthesis,floorplan,placement,cts,routing,signoff}/recipe.ml` | Maintained standard domain compositions |
+| `flow_domain/stages/{synthesis,floorplan,placement,cts,routing,timing,signoff}/recipe.ml` | Maintained standard domain compositions |
 | `flow_domain/stages/placement/{global_placement,design_repair,detailed_placement}.ml` | Placement operation contracts |
 | `flow_domain/analysis/timing.ml` | Shared pre/mid/post-PNR timing contracts |
 | `flow_domain/backends/librelane/mapping.{ml,mli}` | Exact Classic implementation/artifact/gate/setting mapping; derived endpoints/successors |
@@ -157,7 +156,7 @@ recipe schemas remain compatible.
 `Registry.operations Flow.Stage.Placement` describes its domain groups.
 `Backends.Librelane.Mapping.composition Flow.Stage.Placement` expands them into
 21 ordered backend occurrences, including all setup, power/PDN, IO/template,
-header/check, STA, repair/manual and detailed-placement work. Flattening all six
+header/check, STA, repair/manual and detailed-placement work. Flattening all seven
 groups gives Classic's 80 occurrences without omissions. Endpoints and immediate
 successors are derived from this same mapping; the bridge's literal tables are
 still checked inertly against them.
@@ -184,21 +183,7 @@ are no new durable step checkpoint boundaries.
 
 ## Runnable consumer example
 
-The sibling `hardcaml_asic_example` supplies an additive pure companion executable.
-It and the existing project CLI were independently linked against an isolated
-installed candidate. This proves consumer linkage, not adoption of a committed
-dependency pin. With that candidate library/CLI installed and activated, run from
-that checkout:
-
-```sh
-dune exec -j 20 asics/fifo_demo/cli/stage_recipe/stage_recipe.exe -- --endpoint floorplan > /tmp/floorplan-recipe.json
-dune exec -j 20 asics/fifo_demo/cli/stage_recipe/stage_recipe.exe -- --initial-boundary floorplan --endpoint signoff > /tmp/resume-recipe.json
-dune exec -j 20 asics/fifo_demo/cli/chip.exe -- describe --json
-```
-
-The recipe command writes JSON to stdout and rejects invalid declarations with
-exit 2. It needs no project root, bundle, PDK or Docker. It is separate from the
-specimen's declared design source inventory and existing `project` commands.
+A consumer may wrap the typed recipe API above in a small executable that writes a recipe JSON to stdout without a PDK or Docker.
 For a fresh implementation, select an existing published bundle and explicit
 toolchain roots, then request a new workspace whose parent already exists.
 CLI journaling defaults to `<resolved-workspace-parent>/observations`. Keep an
@@ -207,13 +192,17 @@ exclusive single-object-output escape hatch. Standalone runner APIs still
 choose no store implicitly:
 
 ```sh
-BUNDLE=/absolute/path/to/published/bundle
-TT=/absolute/path/to/support-tools
-PDK=/absolute/path/to/pdk
-FLOW_PYTHON=/absolute/path/to/flow-venv/bin/python
-WORKSPACE=/absolute/path/to/new-workspace
-OBSERVATIONS=/absolute/path/to/observation-store
-hardcaml-asic-flow stages "$BUNDLE" --plan /tmp/floorplan-recipe.json \
+# BUNDLE and TOOLCHAIN come from the README demo.
+TT="$TOOLCHAIN/tt"
+PDK="$TOOLCHAIN/pdk"
+FLOW_PYTHON="$TOOLCHAIN/.venv/bin/python"
+ATTEMPT_ROOT=$(mktemp -d)
+WORKSPACE="$ATTEMPT_ROOT/implementation"
+OBSERVATIONS="$ATTEMPT_ROOT/observations"
+cat > "$ATTEMPT_ROOT/floorplan-recipe.json" <<'JSON'
+{"schema_version":4,"stages":["synthesis","floorplan"],"initial_boundary":null}
+JSON
+hardcaml-asic-flow stages "$BUNDLE" --plan "$ATTEMPT_ROOT/floorplan-recipe.json" \
   --support-tools "$TT" --pdk-root "$PDK" --python "$FLOW_PYTHON" \
   --workspace "$WORKSPACE" --checkpoint-store "$WORKSPACE/checkpoints" \
   --observation-store "$OBSERVATIONS"
@@ -226,7 +215,8 @@ shown in the [stage quickstart](stage-quickstart.md#watch-and-inspect); the exac
 payloads, exit codes and host-only validation semantics are in the
 [flow guide](flow.md#default-persistent-stage-observation-schema-2-reads-schema-1).
 
-To resume, pass `/tmp/resume-recipe.json` as `--plan`, the floorplan publication as
+To resume, save the schema-4 resume recipe shown above to a new JSON file and
+pass it as `--plan`, the floorplan publication as
 `--checkpoint`, and **the retained original workspace and checkpoint-store paths**
 to the same `stages` command. Supply the same bundle/tool roots. The provider
 checks the publication's actual source against the recipe and validates complete
@@ -244,51 +234,25 @@ CLI supplies inspection and cursor updates; see [flow guide](flow.md) for schema
 The stage service requires Docker and the exact tested image
 `sha256:d109140b8f17fc54f4fca998beb8124f4949404ec52e339eebd2250854a18b5a`.
 Keep path-bound workspace, inputs, support tools, PDK roots and bridge/image
-closure. Native/macro/relocated/other-image handoffs, arbitrary DAGs/ranges,
+closure. Native/relocated/other-image handoffs, arbitrary DAGs/ranges,
 per-stage configuration and recovered execution are future contracts.
-Static capabilities do not upgrade older schema-1 checkpoints.
+Limited macro execution is described in [segmented SRAM](segmented-sram.md). Static capabilities do not upgrade older checkpoints.
 
 Signoff completion/publication has `acceptance: not_evaluated`. External checks
 and acceptance use the separate `finalize` operation. Currently finalization
-requires one completed fresh six-stage execution; composed declarations are
+requires one completed fresh non-macro full execution; composed declarations are
 supported, stitching resumed multi-attempt evidence for finalization is not.
 
 ## Contract verification
 
-From the provider root:
+From the provider root, use the selected compatible opam switch:
 
 ```sh
-dune build -j 20 @test/ocaml-stage-recipes @test/stage-checkpoint @test/flow-cli @install
-dune install -j 20 --prefix /tmp/asic-recipe-prefix
-```
-
-From the sibling checkout, compile against that installed library:
-
-```sh
-OCAMLPATH="/tmp/asic-recipe-prefix/lib${OCAMLPATH:+:$OCAMLPATH}" dune build -j 20 --build-dir /tmp/asic-recipe-consumer-build asics/fifo_demo/cli/stage_recipe/stage_recipe.exe asics/fifo_demo/cli/chip.exe
-```
-
-Back in the provider checkout, validate installed bytes with the test-only source
-oracle separated from runtime resources:
-
-```sh
+dune build @test/ocaml-stage-recipes @test/stage-checkpoint @test/flow-cli
 python3 -B test/test_installed_prefix.py
 ```
 
-For a separate specimen run, `check_stage_recipes.py --provider-prefix PREFIX
---consumer-executable EXE --emitter EXE` requires `FLOW_TEST_REFERENCE_ROOT` from
-`test/reference_harness.copy_reference(checkout/flow, private_reference, PREFIX/lib/hardcaml_asic/flow)`
-and `FLOW_TEST_RUNTIME_ROOT=PREFIX/lib/hardcaml_asic/flow`. The reference must live
-outside the checkout/prefix; runtime links resolve to actual installed bytes.
-Missing explicit roots fail instead of searching a checkout.
-
-The test decodes actual OCaml output using the SOURCE-only reference, compares
-capabilities and ordered handoffs, checks all length-0-through-3 candidate sequences
-for every source, all endpoint expansions (including long sequences), composition,
-provider mismatch rejection, installed checkpoint inspection and independently
-linked specimen output. It exercises no physical EDA. Use a new private prefix for
-reproduction; the independently linked specimen requires the same current library.
-
-These are API and packaging checks; they run no physical EDA. Real six-stage
-physical, observed and accepted executions are recorded separately in the
-[phase plan](../phase_plan.md#explicit-stage-refactor-closeout).
+The focused tests exercise the actual typed recipe emitter, composition,
+endpoint expansion and checkpoint boundaries. The separate installed-prefix
+check builds external consumers against a private provider installation and
+checks the runtime layout. These checks need no physical EDA tools.

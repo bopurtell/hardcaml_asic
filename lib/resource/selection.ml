@@ -130,7 +130,7 @@ let select_with_budget
       }
 
   (* No macro, and the project requires one; nothing acceptable exists *)
-  (* TODO (future fix): the message does not follow docs/development/comment_guidelines.md section 9,
+  (* TODO (future fix): the message does not follow the structured diagnostic convention,
      which wants "what went wrong; how to fix it". Something like "no exact technology
      implementation for the requested contract; add a mapping for it, or allow flops with
      Exact_or_flop_fallback". Changing it changes expect test output, so update those in

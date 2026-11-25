@@ -36,7 +36,7 @@ def main():
         return json.loads(p.stdout)
 
     v = call([variant, 'variant'])
-    with tempfile.TemporaryDirectory(prefix='pt8-independent-B-') as tmp:
+    with tempfile.TemporaryDirectory(prefix='workload-comparison-review-') as tmp:
         root = Path(tmp)
         l, lw, ls, lr = fixture(root / 'left', v, 'flops')
         r, rw, rs, rr = fixture(root / 'right', v, 'sram')

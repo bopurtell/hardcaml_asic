@@ -224,7 +224,7 @@ class ObservationTest(unittest.TestCase):
             return stages.prepare(bundle=self.root / "bundle", support_tools=self.root / "tt", pdk_root=self.root / "pdk",
                                   python=sys.executable, workspace=self.root / "workspace", checkpoint_store=self.root / "workspace/checkpoints",
                                   preflight_output=self.writer.directory / "preflight.json")
-        with patch.object(stages.phase4, "preflight", return_value={"ready": False, "issues": ["fixture unavailable"]}):
+        with patch.object(stages.coarse_flow_oracle, "preflight", return_value={"ready": False, "issues": ["fixture unavailable"]}):
             with self.assertRaises(ValueError):
                 self.writer.run(lambda: plans.resolve_stages("floorplan"), prepare)
         state = obs.inspect(self.writer.directory)["state"]

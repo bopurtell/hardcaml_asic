@@ -44,7 +44,7 @@ def main():
             return
         return json.loads(p.stdout)
 
-    with tempfile.TemporaryDirectory(prefix='pt8-workload-') as tmp:
+    with tempfile.TemporaryDirectory(prefix='workload-') as tmp:
         root = Path(tmp)
         bundle = root / 'bundle'
         bundle.mkdir()

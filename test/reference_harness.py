@@ -12,7 +12,7 @@ import sys
 
 RETIRED = (
     "__main__", "archive", "cli", "ocaml_backend", "checkpoint", "stages",
-    "identity", "execution_transport", "execution_plan", "phase4", "report",
+    "identity", "execution_transport", "execution_plan", "coarse_flow_oracle", "report",
     "presentation", "result_store", "runner", "flow_observation", "finalization",
 )
 RUNTIME = (

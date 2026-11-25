@@ -30,7 +30,7 @@ def tree_snapshot(root):
             ("directory",) if p.is_dir() else ("file", sha(p)) for p in root.rglob("*")}
 
 
-with tempfile.TemporaryDirectory(prefix="pt7-named-runtime-", dir="/tmp/opencode") as temp:
+with tempfile.TemporaryDirectory(prefix="named-timing-runtime-", dir="/tmp/opencode") as temp:
     tmp = Path(temp)
     bundle = tmp / "bundle"
     emitted = subprocess.run([EMITTER, bundle], text=True, capture_output=True)

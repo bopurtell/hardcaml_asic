@@ -476,7 +476,7 @@ let inspect_impl ~directory () =
    | Ok () -> () | Error _ -> invalid_arg "invalid bundle manifest identity");
   if get manifest "identity"<>get audit "build_identity" then invalid_arg "audit/manifest build mismatch";
   (* Check the complete retained SDC bytes, independently of the supplementary
-     PT7 suffix replay. Altering any prefix cannot retain this bundle identity. *)
+     Timing intent suffix replay. Altering any prefix cannot retain this bundle identity. *)
   if digest (get sdc_file "sha256")<>Identity_json.sha256_bytes (raw "sdc") then invalid_arg "audit SDC differs from emitted bundle";
    let intent,resolved_stages,resolved,applied,topology=replay ~manifest ~resolution:(raw "resolution") ~log_wire:log.wire in
   let native_coverage=if native then (

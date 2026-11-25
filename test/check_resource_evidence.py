@@ -63,7 +63,7 @@ def main():
         p=subprocess.run([str(a.consumer.resolve()), op, str(path)], capture_output=True, text=True)
         assert p.returncode==0, (op, p.stdout, p.stderr)
         return json.loads(p.stdout)
-    with tempfile.TemporaryDirectory(prefix='pt5-resource-') as tmp:
+    with tempfile.TemporaryDirectory(prefix='resource-evidence-') as tmp:
         root=Path(tmp);flow,mapped,record=fixture(root)
         original={p:sha(p) for p in root.rglob('*') if p.is_file()}
         e=invoke(root);synth=e['observations'][0];m=synth['measurements']

@@ -8,7 +8,7 @@ import tempfile
 cases = json.loads(Path(sys.argv[1]).read_text())
 assert len(cases) == 17
 assert any(b"\r" in c["state"].encode() and b"\r\n" not in c["state"].encode() for c in cases)
-with tempfile.TemporaryDirectory(prefix="pt7c-newline-language-") as root:
+with tempfile.TemporaryDirectory(prefix="native-newline-language-") as root:
     root = Path(root)
     oracle = root / "oracle.tcl"
     oracle.write_text('''set false_paths 0
@@ -35,4 +35,4 @@ puts [join $::designs ,]
                                 capture_output=True, check=True, timeout=10)
         expected = [str(case["false_paths"]), str(case["disables"]), ",".join(case["designs"])]
         assert result.stdout.splitlines() == expected, (case["name"], result, expected)
-print("PT7c independent tclsh LF/CR/CRLF source-channel controls: 17 passed (no EDA)")
+print("Native timing independent tclsh LF/CR/CRLF source-channel controls: 17 passed (no EDA)")

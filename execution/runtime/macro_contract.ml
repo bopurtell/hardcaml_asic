@@ -206,7 +206,7 @@ let require_segmented manifest =
       "segmented SRAM supports exactly one stock256x16 R0 macro";
     check (get manifest "timing_intent"=J.null && get manifest "timing_native_coverage"=J.null &&
       get manifest "timing_physical_qualification"=J.null)
-      "segmented SRAM does not support PT7 linked timing intent or exceptions")
+      "segmented SRAM does not support linked timing intent or exceptions")
 
 let require_segmented_plan manifest plan =
   require_segmented manifest;

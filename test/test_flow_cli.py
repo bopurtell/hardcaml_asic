@@ -457,7 +457,7 @@ class PresentationTest(unittest.TestCase):
         return self.invoke(["preflight", "bundle", "--toolchain", "tools", *options])
 
     def test_preflight_default_is_concise_and_repeated_diagnostics_are_distinct(self):
-        with mock.patch.object(flow_cli.phase4, "preflight", return_value=self.payload) as probe:
+        with mock.patch.object(flow_cli.coarse_flow_oracle, "preflight", return_value=self.payload) as probe:
             for _ in range(2):
                 code, stdout, stderr = self.preflight()
                 self.assertEqual(code, 0, stderr)
@@ -482,7 +482,7 @@ class PresentationTest(unittest.TestCase):
         self.assertNotEqual(*identities)
 
     def test_preflight_explicit_file_only_and_raw_json_is_unchanged(self):
-        with mock.patch.object(flow_cli.phase4, "preflight", return_value=self.payload):
+        with mock.patch.object(flow_cli.coarse_flow_oracle, "preflight", return_value=self.payload):
             code, stdout, stderr = self.preflight("--output", "exact.json", "--json", "--verbose")
         self.assertEqual(code, 0, stderr)
         self.assertEqual(json.loads(stdout), self.payload)
@@ -493,7 +493,7 @@ class PresentationTest(unittest.TestCase):
 
     def test_json_flag_order_preserves_global_and_local_spelling(self):
         base = ["preflight", "bundle", "--toolchain", "tools", "--output", "exact.json"]
-        with mock.patch.object(flow_cli.phase4, "preflight", return_value=self.payload):
+        with mock.patch.object(flow_cli.coarse_flow_oracle, "preflight", return_value=self.payload):
             for argv in (["--json", *base], [*base, "--json"],
                          ["--json", *base, "--json", "--verbose"]):
                 code, stdout, stderr = self.invoke(argv)
@@ -511,7 +511,7 @@ class PresentationTest(unittest.TestCase):
     def test_preflight_failure_exception_and_interruption_are_durable(self):
         for error, expected, status in ((RuntimeError("probe broke"), 1, "failed"),
                 (flow_cli.result_store.FlowInterrupted(signal.SIGTERM), 143, "interrupted")):
-            with mock.patch.object(flow_cli.phase4, "preflight", side_effect=error):
+            with mock.patch.object(flow_cli.coarse_flow_oracle, "preflight", side_effect=error):
                 code, stdout, stderr = self.preflight("--json")
             self.assertEqual(code, expected, stderr)
             payload = json.loads(stdout)
@@ -527,13 +527,13 @@ class PresentationTest(unittest.TestCase):
 
     def test_preflight_not_ready_preserves_raw_payload_and_scoped_signal(self):
         failed = {"ready": False, "issues": ["fixture tool unavailable"], "actual": {}}
-        with mock.patch.object(flow_cli.phase4, "preflight", return_value=failed):
+        with mock.patch.object(flow_cli.coarse_flow_oracle, "preflight", return_value=failed):
             code, stdout, stderr = self.preflight("--json", "--output", "failed.json")
         self.assertEqual(code, 1)
         self.assertEqual(json.loads(stdout), failed)
         self.assertIn("fixture tool unavailable", stderr)
         previous = signal.getsignal(signal.SIGINT)
-        with mock.patch.object(flow_cli.phase4, "preflight",
+        with mock.patch.object(flow_cli.coarse_flow_oracle, "preflight",
                                side_effect=lambda *a: signal.raise_signal(signal.SIGINT)):
             code, stdout, stderr = self.preflight("--output", "interrupted.json")
         self.assertEqual(code, 130)
@@ -550,7 +550,7 @@ class PresentationTest(unittest.TestCase):
         cases = (["--output", "missing/report.json"], ["--output", "."],
                  ["--results-root", "blocked"], ["--waiver", "unknown=reason"],
                  ["--waiver", "python-version=unsupported"], ["--results-root", ""])
-        with mock.patch.object(flow_cli.phase4, "preflight") as probe:
+        with mock.patch.object(flow_cli.coarse_flow_oracle, "preflight") as probe:
             for options in cases:
                 code, stdout, _ = self.preflight(*options)
                 self.assertEqual(code, 2, options)
@@ -583,8 +583,8 @@ class PresentationTest(unittest.TestCase):
             "requested_stage": "synthesis", "completed_stage": None,
             "outputs": {"flow": "project/runs/asic"}}))
         from resource_evidence_compat import collection_expected
-        payload = collection_expected(flow_cli.phase4.collect(run))
-        with mock.patch.object(flow_cli.phase4, "collect", side_effect=AssertionError("native boundary required")):
+        payload = collection_expected(flow_cli.coarse_flow_oracle.collect(run))
+        with mock.patch.object(flow_cli.coarse_flow_oracle, "collect", side_effect=AssertionError("native boundary required")):
             code, stdout, _ = self.invoke(["collect", "run"])
             self.assertEqual(code, 0)
             self.assertIn(str(run / "results.json"), stdout)
@@ -608,7 +608,7 @@ class PresentationTest(unittest.TestCase):
     def test_execute_json_internal_operations_do_not_leak_stdout(self):
         run = self.cwd / "run"
         run.mkdir()
-        outcome = flow_cli.phase4.RunOutcome("full-identity", run, run / "run.json", "completed", 0)
+        outcome = flow_cli.coarse_flow_oracle.RunOutcome("full-identity", run, run / "run.json", "completed", 0)
         (run / "run.json").write_text(json.dumps({
             "run_id": "full-identity", "build_identity": "build", "status": "completed",
             "requested_stage": "synthesis", "completed_stage": "synthesis",
@@ -621,7 +621,7 @@ class PresentationTest(unittest.TestCase):
             "design__inferred_latch__count": 0}}))
         archive_fixture(run)
         with mock.patch.object(self.operations, "run", return_value=outcome), \
-                mock.patch.object(flow_cli.phase4, "collect", side_effect=AssertionError("native boundary required")), \
+                mock.patch.object(flow_cli.coarse_flow_oracle, "collect", side_effect=AssertionError("native boundary required")), \
                 mock.patch.object(flow_cli.reporter, "report", side_effect=AssertionError("native report required")), \
                 mock.patch.object(flow_cli.archiver, "archive", side_effect=AssertionError("native archive required")):
             code, stdout, stderr = self.invoke(["execute", "bundle", "--stage", "synthesis",
@@ -650,7 +650,7 @@ class PresentationTest(unittest.TestCase):
         run.mkdir()
         record = run / "run.json"
         record.write_text(json.dumps({"error": "fixture run failed", "requested_stage": "synthesis"}))
-        outcome = flow_cli.phase4.RunOutcome("full-identity", run, record, "failed", 1)
+        outcome = flow_cli.coarse_flow_oracle.RunOutcome("full-identity", run, record, "failed", 1)
         fake = FakeOperations()
         fake.run_outcome = outcome
         for options in ([], ["--json", "--verbose"]):
@@ -928,7 +928,7 @@ class RepositoryDriverTest(unittest.TestCase):
     def test_the_driver_holds_no_operation_implementation(self):
         """Structural: the removed duplicates must not creep back in."""
         text = self.DRIVER.read_text()
-        for absent in ("scripts/phase4.py", "scripts/report.py", "ls -td",
+        for absent in ("scripts/coarse_flow_oracle.py", "scripts/report.py", "ls -td",
                        "--allow-python-mismatch", "latest_run"):
             with self.subTest(absent=absent):
                 self.assertNotIn(absent, text)

@@ -11,7 +11,7 @@ from unittest import mock
 
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "flow"))
-from hardcaml_asic_flow import runtime_contract as rc, runtime_observation as ro, phase4
+from hardcaml_asic_flow import runtime_contract as rc, runtime_observation as ro, coarse_flow_oracle
 
 ROOT = Path(__file__).resolve().parents[1]
 HOST = {"python_version": "3.11.17", "librelane_version": "3.1.0.dev3",
@@ -189,7 +189,7 @@ class IntegrationTest(unittest.TestCase):
                 "schema_version": 1, "adapter": "LibreLane", "files": [],
                 "requested_tools": dict(requested, support_tools_revision="rev", pdk_revision="rev"),
                 "target": {"external_references": [], "technology": "fixture"}}))
-            with mock.patch.object(phase4, "command_output", return_value="rev") as commands, \
+            with mock.patch.object(coarse_flow_oracle, "command_output", return_value="rev") as commands, \
                  mock.patch.object(ro, "observe_host", return_value=dict(HOST,
                     interpreter=str(root / "venv/bin/python"), interpreter_flags=["-I", "-B"])) as host, \
                  mock.patch.object(ro, "observe_container", return_value=dict(CONTAINER,
@@ -199,7 +199,7 @@ class IntegrationTest(unittest.TestCase):
                     image_identity={"image_id": IMAGE_ID, "declared_ref": "ghcr.io/librelane/librelane:3.1.0.dev3",
                                     "binding": "local-image-id", "repo_digests": [],
                                     "platform": {"os": "linux", "architecture": "amd64"}})) as container:
-                report = phase4.preflight(root, root, root, root / "venv/bin/python", native=native)
+                report = coarse_flow_oracle.preflight(root, root, root, root / "venv/bin/python", native=native)
             return report, commands, host, container
 
     def test_preflight_policy_bundle_authority_legacy_new_native_and_fail_closed(self):

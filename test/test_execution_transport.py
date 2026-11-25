@@ -12,8 +12,8 @@ from unittest import mock
 
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "flow"))
-from hardcaml_asic_flow import execution_transport as transport, phase4
-import test_phase4 as fixtures
+from hardcaml_asic_flow import execution_transport as transport, coarse_flow_oracle
+import test_coarse_flow as fixtures
 
 
 def docker_binding(rootless=False):
@@ -113,23 +113,23 @@ class BoundRunTest(fixtures.RunnerTest):
 
     def test_new_docker_run_uses_binding_for_legacy_and_new_policy(self):
         self.args.native = False
-        with mock.patch.object(phase4, "preflight", return_value=self.ready()), \
+        with mock.patch.object(coarse_flow_oracle, "preflight", return_value=self.ready()), \
              mock.patch.object(transport, "verify_engine", return_value={}), mock.patch.object(transport, "verify_image"), \
-             mock.patch.object(phase4, "run_logged", return_value=0) as logged:
-            outcome = phase4.run(self.args)
+             mock.patch.object(coarse_flow_oracle, "run_logged", return_value=0) as logged:
+            outcome = coarse_flow_oracle.run(self.args)
         self.assertEqual(outcome.exit_code, 0)
         argv = logged.call_args.args[0]
         self.assertEqual(argv[0], "/checked/docker")
         self.assertIn("sha256:" + "1" * 64, argv)
         self.assertNotIn("--dockerized", argv)
         self.assertIsNotNone(logged.call_args.kwargs["cleanup"])
-        self.assertEqual(phase4.read_json(outcome.run_record)["execution_binding"], docker_binding())
+        self.assertEqual(coarse_flow_oracle.read_json(outcome.run_record)["execution_binding"], docker_binding())
 
     def test_native_exact_literal_flags_and_sanitized_env(self):
-        with mock.patch.object(phase4, "preflight", return_value=self.ready()), \
+        with mock.patch.object(coarse_flow_oracle, "preflight", return_value=self.ready()), \
              mock.patch.dict(os.environ, {"PYTHONPATH": "evil"}), \
-             mock.patch.object(phase4, "run_logged", return_value=0) as logged:
-            outcome = phase4.run(self.args)
+             mock.patch.object(coarse_flow_oracle, "run_logged", return_value=0) as logged:
+            outcome = coarse_flow_oracle.run(self.args)
         self.assertEqual(outcome.exit_code, 0)
         self.assertEqual(logged.call_args.args[0][:5], [str(self.args.python), "-I", "-B", "-m", "librelane"])
         self.assertNotIn("PYTHONPATH", logged.call_args.args[2])
@@ -137,32 +137,32 @@ class BoundRunTest(fixtures.RunnerTest):
     def test_missing_binding_records_failure_without_launch(self):
         report = self.ready()
         del report["execution_binding"]
-        with mock.patch.object(phase4, "preflight", return_value=report), \
-             mock.patch.object(phase4, "run_logged") as logged:
-            outcome = phase4.run(self.args)
+        with mock.patch.object(coarse_flow_oracle, "preflight", return_value=report), \
+             mock.patch.object(coarse_flow_oracle, "run_logged") as logged:
+            outcome = coarse_flow_oracle.run(self.args)
         self.assertEqual(outcome.status, "failed")
         logged.assert_not_called()
 
     def test_changed_binding_cannot_disagree_with_saved_observation(self):
         report = self.ready()
         report["execution_binding"]["interpreter"] = "/other/python"
-        with mock.patch.object(phase4, "preflight", return_value=report), \
-             mock.patch.object(phase4, "run_logged") as logged:
-            outcome = phase4.run(self.args)
+        with mock.patch.object(coarse_flow_oracle, "preflight", return_value=report), \
+             mock.patch.object(coarse_flow_oracle, "run_logged") as logged:
+            outcome = coarse_flow_oracle.run(self.args)
         self.assertEqual(outcome.status, "failed")
-        self.assertIn("differs from preflight observations", phase4.read_json(outcome.run_record)["error"])
+        self.assertIn("differs from preflight observations", coarse_flow_oracle.read_json(outcome.run_record)["error"])
         logged.assert_not_called()
 
     def test_interruption_cleanup_failure_preserves_signal_and_escalates(self):
         process = mock.Mock(pid=12345)
-        process.wait.side_effect = [phase4.FlowInterrupted(signal.SIGTERM),
+        process.wait.side_effect = [coarse_flow_oracle.FlowInterrupted(signal.SIGTERM),
                                     subprocess.TimeoutExpired("client", 5), -9]
         record = {"commands": []}
         cleanup = mock.Mock(side_effect=RuntimeError("daemon unavailable"))
-        with mock.patch.object(phase4.subprocess, "Popen", return_value=process), \
-             mock.patch.object(phase4.os, "killpg") as kill:
-            with self.assertRaises(phase4.FlowInterrupted) as error:
-                phase4.run_logged(["client"], self.root, {}, self.root / "log", record,
+        with mock.patch.object(coarse_flow_oracle.subprocess, "Popen", return_value=process), \
+             mock.patch.object(coarse_flow_oracle.os, "killpg") as kill:
+            with self.assertRaises(coarse_flow_oracle.FlowInterrupted) as error:
+                coarse_flow_oracle.run_logged(["client"], self.root, {}, self.root / "log", record,
                                   self.root / "record.json", cleanup=cleanup)
         self.assertEqual(error.exception.signum, signal.SIGTERM)
         self.assertEqual(record["container_cleanup"][0]["status"], "failed")
@@ -173,9 +173,9 @@ class BoundRunTest(fixtures.RunnerTest):
     def test_failed_launch_still_cleans_owned_container(self):
         record = {"commands": []}
         cleanup = mock.Mock()
-        with mock.patch.object(phase4.subprocess, "Popen", side_effect=OSError("launch failed")):
+        with mock.patch.object(coarse_flow_oracle.subprocess, "Popen", side_effect=OSError("launch failed")):
             with self.assertRaises(OSError):
-                phase4.run_logged(["client"], self.root, {}, self.root / "log", record,
+                coarse_flow_oracle.run_logged(["client"], self.root, {}, self.root / "log", record,
                                   self.root / "record.json", cleanup=cleanup)
         cleanup.assert_called_once()
         self.assertEqual(record["container_cleanup"][0]["status"], "removed-or-absent")
@@ -183,9 +183,9 @@ class BoundRunTest(fixtures.RunnerTest):
     def test_cleanup_failure_prevents_success(self):
         process = mock.Mock()
         process.wait.return_value = 0
-        with mock.patch.object(phase4.subprocess, "Popen", return_value=process):
+        with mock.patch.object(coarse_flow_oracle.subprocess, "Popen", return_value=process):
             with self.assertRaisesRegex(RuntimeError, "cleanup failed"):
-                phase4.run_logged(["client"], self.root, {}, self.root / "log", {"commands": []},
+                coarse_flow_oracle.run_logged(["client"], self.root, {}, self.root / "log", {"commands": []},
                     self.root / "record.json", cleanup=mock.Mock(side_effect=RuntimeError("timeout")))
 
     def test_real_client_and_term_ignoring_descendant_are_bounded(self):
@@ -199,7 +199,7 @@ class BoundRunTest(fixtures.RunnerTest):
         cleanup = mock.Mock()
         started = time.monotonic()
         with self.assertRaises(subprocess.TimeoutExpired):
-            phase4.run_logged([sys.executable, "-I", "-B", "-c", code], self.root, {},
+            coarse_flow_oracle.run_logged([sys.executable, "-I", "-B", "-c", code], self.root, {},
                 self.root / "log", {"commands": []}, self.root / "record.json",
                 cleanup=cleanup, timeout=0.3)
         self.assertLess(time.monotonic() - started, 12)
@@ -220,16 +220,16 @@ class BoundRunTest(fixtures.RunnerTest):
 
 class BoundPostcheckTest(fixtures.PostcheckTest):
     def test_exact_image_and_engine_are_verified_before_simulator(self):
-        record = phase4.read_json(self.run_dir / "run.json")
+        record = coarse_flow_oracle.read_json(self.run_dir / "run.json")
         record["execution_binding"] = docker_binding(rootless=True)
-        phase4.save(self.run_dir / "run.json", record)
-        with mock.patch.object(phase4, "command_output", side_effect=self.probes[:2]), \
+        coarse_flow_oracle.save(self.run_dir / "run.json", record)
+        with mock.patch.object(coarse_flow_oracle, "command_output", side_effect=self.probes[:2]), \
              mock.patch.object(transport, "verify_engine", return_value={"name": "docker"}) as engine, \
              mock.patch.object(transport, "verify_image", return_value="sha256:" + "1" * 64) as image, \
              mock.patch.object(transport, "cleanup"), \
-             mock.patch.object(phase4.runtime_observation, "output", return_value="Icarus 12"), \
-             mock.patch.object(phase4, "run_logged", return_value=0) as logged:
-            outcome = phase4.check(self.args)
+             mock.patch.object(coarse_flow_oracle.runtime_observation, "output", return_value="Icarus 12"), \
+             mock.patch.object(coarse_flow_oracle, "run_logged", return_value=0) as logged:
+            outcome = coarse_flow_oracle.check(self.args)
         self.assertEqual(outcome.exit_code, 0)
         engine.assert_called_once()
         image.assert_called_once()
@@ -237,42 +237,42 @@ class BoundPostcheckTest(fixtures.PostcheckTest):
         self.assertEqual(compile_command[0], "/checked/docker")
         self.assertIn("sha256:" + "1" * 64, compile_command)
         self.assertNotIn("--user", compile_command)
-        tools = phase4.read_json(outcome.check_record)["tools"]
+        tools = coarse_flow_oracle.read_json(outcome.check_record)["tools"]
         self.assertEqual(tools["execution_binding"], record["execution_binding"])
 
     def test_new_missing_binding_cannot_use_legacy_tag_fallback(self):
-        record = phase4.read_json(self.run_dir / "run.json")
+        record = coarse_flow_oracle.read_json(self.run_dir / "run.json")
         record["execution_binding_required"] = True
-        phase4.save(self.run_dir / "run.json", record)
-        with mock.patch.object(phase4, "command_output", side_effect=self.probes[:2]), \
-             mock.patch.object(phase4, "run_logged") as logged:
-            outcome = phase4.check(self.args)
+        coarse_flow_oracle.save(self.run_dir / "run.json", record)
+        with mock.patch.object(coarse_flow_oracle, "command_output", side_effect=self.probes[:2]), \
+             mock.patch.object(coarse_flow_oracle, "run_logged") as logged:
+            outcome = coarse_flow_oracle.check(self.args)
         self.assertEqual(outcome.status, "failed")
         logged.assert_not_called()
 
     def test_image_verification_failure_prevents_simulator_invocation(self):
-        record = phase4.read_json(self.run_dir / "run.json")
+        record = coarse_flow_oracle.read_json(self.run_dir / "run.json")
         record["execution_binding"] = docker_binding()
-        phase4.save(self.run_dir / "run.json", record)
-        with mock.patch.object(phase4, "command_output", side_effect=self.probes[:2]), \
+        coarse_flow_oracle.save(self.run_dir / "run.json", record)
+        with mock.patch.object(coarse_flow_oracle, "command_output", side_effect=self.probes[:2]), \
              mock.patch.object(transport, "verify_engine", return_value={}), \
              mock.patch.object(transport, "verify_image", side_effect=transport.BindingError("ID mismatch")), \
-             mock.patch.object(phase4.runtime_observation, "output") as simulator, \
-             mock.patch.object(phase4, "run_logged") as logged:
-            outcome = phase4.check(self.args)
+             mock.patch.object(coarse_flow_oracle.runtime_observation, "output") as simulator, \
+             mock.patch.object(coarse_flow_oracle, "run_logged") as logged:
+            outcome = coarse_flow_oracle.check(self.args)
         self.assertEqual(outcome.status, "failed")
         simulator.assert_not_called()
         logged.assert_not_called()
 
     def test_new_native_record_cannot_select_a_mutable_simulator_tag(self):
-        record = phase4.read_json(self.run_dir / "run.json")
+        record = coarse_flow_oracle.read_json(self.run_dir / "run.json")
         record["execution_binding"] = {"schema_version": 1, "execution_mode": "native",
             "interpreter": "/selected/python", "interpreter_flags": ["-I", "-B"]}
-        phase4.save(self.run_dir / "run.json", record)
-        with mock.patch.object(phase4, "command_output", side_effect=self.probes[:2]), \
-             mock.patch.object(phase4.runtime_observation, "observe_container") as probe, \
-             mock.patch.object(phase4, "run_logged") as logged:
-            outcome = phase4.check(self.args)
+        coarse_flow_oracle.save(self.run_dir / "run.json", record)
+        with mock.patch.object(coarse_flow_oracle, "command_output", side_effect=self.probes[:2]), \
+             mock.patch.object(coarse_flow_oracle.runtime_observation, "observe_container") as probe, \
+             mock.patch.object(coarse_flow_oracle, "run_logged") as logged:
+            outcome = coarse_flow_oracle.check(self.args)
         self.assertEqual(outcome.status, "failed")
         probe.assert_not_called()
         logged.assert_not_called()
@@ -280,13 +280,13 @@ class BoundPostcheckTest(fixtures.PostcheckTest):
 
 class BoundCollectorTest(fixtures.CollectorTest):
     def test_container_implementation_version_overrides_host_launcher(self):
-        record = phase4.read_json(self.root / "run.json")
+        record = coarse_flow_oracle.read_json(self.root / "run.json")
         record["execution_mode"] = "dockerized"
         record["environment"]["actual"]["librelane"] = "host-launcher"
         record["environment"]["runtime_contract"] = {"observations": {
             "container": {"librelane_version": "container-implementation"}}}
-        phase4.save(self.root / "run.json", record)
-        self.assertEqual(phase4.collect(self.root)["tool"]["version"], "container-implementation")
+        coarse_flow_oracle.save(self.root / "run.json", record)
+        self.assertEqual(coarse_flow_oracle.collect(self.root)["tool"]["version"], "container-implementation")
 
 
 if __name__ == "__main__":

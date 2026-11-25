@@ -1,6 +1,6 @@
 # Declare hardware variants and compare retained evidence
 
-The first PT.8 slice records hardware parameters in ordinary project/bundle
+The variant API records hardware parameters in ordinary project/bundle
 identities and compares two explicit retained targets through public library/CLI
 interfaces. It does not launch experiments or choose a winning design.
 
@@ -36,9 +36,7 @@ Hardcaml_asic.Chip_target.of_variant ~variant ~create:(fun checked ->
   else make_chip_target ~depth ())
 ```
 
-Here `make_chip_target` is the consumer's normal chip target constructor. See the complete
-reviewed adapter in
-[`variants/variant_memory.ml`](../../../hardcaml_asic_example/variants/variant_memory.ml).
+Here `make_chip_target` is the consumer's normal chip target constructor.
 
 The optional `hardware_variant` manifest object is identity-covered alongside
 actual RTL, SDC, configuration and declared source copies. Existing methodology
@@ -51,7 +49,7 @@ not independent typed hardware-use validation or preparation-to-bundle proof.
 depth and always construct256 words. The example intentionally does that in a
 negative test: metadata and hashes remain valid, but independent registered-request
 and address-boundary checks fail. Supported adapters need such semantic checks.
-No compiled-source/P6 or authenticated execution claim follows from these identities.
+No compiled-source or authenticated execution claim follows from these identities.
 
 ## Compare two explicit targets
 
@@ -128,8 +126,7 @@ perform no network/current-PDK discovery. Existing source-reader limits still ap
 
 ## Accepted scope and limits
 
-[Corrected installed acceptance](../../../hardcaml_asic_example/docs/pt8_corrected_final.md)
-covers fresh depth128/256 and Flops/Exact256 bundles, profile-only changes, ignored
+Installed acceptance covers fresh depth128/256 and Flops/Exact256 bundles, profile-only changes, ignored
 parameters, actual historical named profiles, physical self and synthesis/physical
 comparisons, API/CLI parity and corruption/race negatives. No EDA was run.
 
@@ -139,12 +136,8 @@ for unplaced schema-1 Exact256 macros (including mixed SRAM/flop designs).
 Historical records are never retrofitted with hardware metadata.
 
 Firmware size and fetch count remain unsupported for the memory protocol below.
-There is no automatic winner, experiment scheduler or Protemu configuration selection.
-The provider remains headless; the separately delivered
-[Silver Workloads](../../../silver/docs/workloads.md) consumes
-its public results and comparison decisions.
-The [PT.8 queue](../phase_plan.md#pt8--reproducible-design-variant-comparisons)
-owns those remaining consumer/workload obligations.
+There is no automatic winner, experiment scheduler.
+The provider remains headless.
 
 ## Explicit checked workload results
 
@@ -181,7 +174,7 @@ execution. A case can conceptually consume one or more workloads, and a workload
 can be executed on one candidate or reused across several. Those relationships
 are not a requirement to compare multiple designs every time a workload runs.
 
-Current PT.8 cases `flops256` and `exact256` each execute the same single fixed
+Example cases `flops256` and `exact256` each execute the same single fixed
 logical memory workload against their respective implementation. Its fill/read/
 hold/boundary phases are part of that one workload. Arbitrary user-authored
 composition of N workloads per case is **not implemented**. Workbench uses the
@@ -227,15 +220,13 @@ canonical selected root checked by the bundle verifier. Workbench can capture
 this exact locator directly. The existing `binding.bundle_identity` stays the
 identity; the locator is descriptive verified-root context, not another identity
 or an authentication claim. It is additive to the inspection projection only:
-retained result/simulation records and the FS2 result-reference artifact schema
-are unchanged. Older cached/synthetic projections may omit it; consumers retain
+retained result and simulation records are unchanged. Older cached/synthetic projections may omit it; consumers retain
 their explicit-path fallback. Fresh inspection/source digests cover the locator.
 
 `Workload_result` checks the bounded `memory-1rw-latency1-v1` protocol: 256×16,
 undefined initial RAM, one-edge read latency, explicit operations and before/after
 observations, and a nonempty half-open measurement window. It independently replays
-the expected memory semantics and trace and checks every stored counter. See the
-[frozen wire/API contract](../development/pt8-workload-handoff.md). Simulation process
+the expected memory semantics and trace and checks every stored counter. Simulation process
 completion and functional pass are distinct. Failed, partial, interrupted or
 functionally failing records stay readable when internally consistent, with
 unavailable performance values and no deltas.
@@ -285,10 +276,7 @@ Changing only JSON whitespace also changes the generation. Source and descriptor
 admission gates remain in force. The complete comparison still rejects above1MiB;
 it never truncates evidence. Hash/replay consistency is not authenticated execution,
 semantic source-use proof, adversarial ABA-history detection, timing/SDF validation
-or P6 compiled-source consistency.
+or compiled-source consistency.
 
-The [workload closeout](../development/pt8-workload-closeout.md) records final
-installed example acceptance and independent review. PT.8 library/example scope
-is complete for this supported protocol; Protemu application/selection remains
-separate. The matched example reports equal cycle latency/throughput and an
+The matched example reports equal cycle latency/throughput and an
 implementation/integration tradeoff, with physical area/speed deltas unavailable.

@@ -24,7 +24,7 @@ RETAINED = Path('/tmp/opencode/native-final-integration/finalizations/20261014T0
 def suite(cli, consumer, package, fixtures, public=None):
     sys.path.insert(0, str(package.parent))
     sys.path.insert(0, str(fixtures.parent))
-    from hardcaml_asic_flow import report, phase4, cli as public_cli, ocaml_backend
+    from hardcaml_asic_flow import report, coarse_flow_oracle, cli as public_cli, ocaml_backend
     import test_report
     test_report.PACKAGE_ROOT = Path(os.environ.get('FLOW_TEST_REFERENCE_ROOT', str(package.parent)))
     count = 0
@@ -185,7 +185,7 @@ def suite(cli, consumer, package, fixtures, public=None):
         # Actual in-memory acquisition compared with actual Python collector/report.
         (run/'project/manifest.json').write_text('{}')
         (run/'results.json').unlink()
-        expected=collection_expected(phase4.collect(run))
+        expected=collection_expected(coarse_flow_oracle.collect(run))
         status,human=compare(run,expected,context,source='collected in memory')
         before=snapshot(run); actual=call(run,'--json')
         assert actual.returncode==status and historical_human(actual.stderr)==human,(actual.stderr,human)
@@ -199,7 +199,7 @@ def suite(cli, consumer, package, fixtures, public=None):
         record=dict(context,requested_stage='synthesis',completed_stage='synthesis')
         (run/'run.json').write_text(json.dumps(record))
         metrics.write_text('timing__setup__ws,0\ntiming__hold__ws,0\n')
-        expected=collection_expected(phase4.collect(run))
+        expected=collection_expected(coarse_flow_oracle.collect(run))
         status,human=compare(run,expected,record,source='collected in memory')
         assert status==0
         before=snapshot(run); actual=call(run,'--json')

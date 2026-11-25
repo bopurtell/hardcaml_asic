@@ -200,7 +200,7 @@ class ArchiveTest(unittest.TestCase):
     def test_missing_original_and_incomplete_staged_copy_fails(self):
         shutil.rmtree(self.bundle)
         (self.run / "project/src/fixture.v").unlink()
-        with self.assertRaises(archive.phase4.PrerequisiteError) as raised:
+        with self.assertRaises(archive.coarse_flow_oracle.PrerequisiteError) as raised:
             archive.archive(self.run, self.output, False)
         self.assertIn("no complete valid immutable bundle", str(raised.exception))
         self.assertFalse(self.output.exists())
@@ -208,46 +208,46 @@ class ArchiveTest(unittest.TestCase):
     def test_tampered_manifest_file_fails(self):
         for root in (self.bundle, self.run / "project"):
             (root / "src/fixture.v").write_text("tampered\n")
-        with self.assertRaises(archive.phase4.PrerequisiteError) as raised:
+        with self.assertRaises(archive.coarse_flow_oracle.PrerequisiteError) as raised:
             archive.archive(self.run, self.output, False)
         self.assertIn("changed bundle file", str(raised.exception))
 
     def test_manifest_and_source_metadata_linkage_are_verified(self):
         self.update_manifest(lambda value: value["source_inputs"][0].update(
             sha256="0" * 64))
-        with self.assertRaises(archive.phase4.PrerequisiteError) as raised:
+        with self.assertRaises(archive.coarse_flow_oracle.PrerequisiteError) as raised:
             archive.archive(self.run, self.output, False)
         self.assertIn("source input metadata disagrees", str(raised.exception))
 
     def test_build_identity_mismatch_fails(self):
         self.update_manifest(lambda value: value.update(identity="different"))
-        with self.assertRaises(archive.phase4.PrerequisiteError) as raised:
+        with self.assertRaises(archive.coarse_flow_oracle.PrerequisiteError) as raised:
             archive.archive(self.run, self.output, False)
         self.assertIn("identity", str(raised.exception))
 
     def test_unsafe_manifest_path_fails(self):
         self.update_manifest(lambda value: value["files"].append(
             {"path": "src/../escape", "sha256": "0" * 64}))
-        with self.assertRaises(archive.phase4.PrerequisiteError) as raised:
+        with self.assertRaises(archive.coarse_flow_oracle.PrerequisiteError) as raised:
             archive.archive(self.run, self.output, False)
         self.assertIn("unsafe bundle path", str(raised.exception))
 
     def test_duplicate_manifest_path_fails(self):
         self.update_manifest(lambda value: value["files"].append(value["files"][0].copy()))
-        with self.assertRaises(archive.phase4.PrerequisiteError) as raised:
+        with self.assertRaises(archive.coarse_flow_oracle.PrerequisiteError) as raised:
             archive.archive(self.run, self.output, False)
         self.assertIn("duplicate bundle path", str(raised.exception))
 
     def test_conflicting_manifest_paths_fail(self):
         self.update_manifest(lambda value: value["files"].append(
             {"path": "src", "sha256": "0" * 64}))
-        with self.assertRaises(archive.phase4.PrerequisiteError) as raised:
+        with self.assertRaises(archive.coarse_flow_oracle.PrerequisiteError) as raised:
             archive.archive(self.run, self.output, False)
         self.assertIn("conflicting bundle paths", str(raised.exception))
 
     def test_staged_manifest_mismatch_fails_even_with_original(self):
         (self.run / "project/manifest.json").write_text("{}\n")
-        with self.assertRaises(archive.phase4.PrerequisiteError) as raised:
+        with self.assertRaises(archive.coarse_flow_oracle.PrerequisiteError) as raised:
             archive.archive(self.run, self.output, False)
         self.assertIn("staged manifest", str(raised.exception))
 
@@ -258,7 +258,7 @@ class ArchiveTest(unittest.TestCase):
         staged = self.run / "project/src/fixture.v"
         staged.unlink()
         staged.symlink_to(target)
-        with self.assertRaises(archive.phase4.PrerequisiteError) as raised:
+        with self.assertRaises(archive.coarse_flow_oracle.PrerequisiteError) as raised:
             archive.archive(self.run, self.output, False)
         self.assertIn("symlink", str(raised.exception))
 
@@ -269,7 +269,7 @@ class ArchiveTest(unittest.TestCase):
         (self.output / "README.md").write_text("human account\n")
         for root in (self.bundle, self.run / "project"):
             (root / "src/fixture.v").write_text("tampered\n")
-        with self.assertRaises(archive.phase4.PrerequisiteError):
+        with self.assertRaises(archive.coarse_flow_oracle.PrerequisiteError):
             archive.archive(self.run, self.output, True)
         self.assertEqual((self.output / "archive.json").read_bytes(), old_archive)
         self.assertEqual((self.output / "input-bundle.tar.gz").read_bytes(), old_bundle)
@@ -299,7 +299,7 @@ class ArchiveTest(unittest.TestCase):
         self.write_check("check-2")
         self.output.mkdir()
         (self.output / "README.md").write_text("human account\n")
-        with self.assertRaises(archive.phase4.PrerequisiteError):
+        with self.assertRaises(archive.coarse_flow_oracle.PrerequisiteError):
             archive.archive(self.run, self.output, False)
         archive.archive(self.run, self.output, True)
         self.assertTrue((self.output / "postcheck-check-1.json").is_file())
@@ -319,21 +319,21 @@ class ArchiveTest(unittest.TestCase):
 
     def test_list_rejects_unfinished_or_corrupted_runs(self):
         self.write_run("failed")
-        with self.assertRaises(archive.phase4.PrerequisiteError):
+        with self.assertRaises(archive.coarse_flow_oracle.PrerequisiteError):
             archive.list_archive(self.run)
         self.write_run("completed")
         (self.run / "project/manifest.json").write_text("{}\n")
-        with self.assertRaises(archive.phase4.PrerequisiteError):
+        with self.assertRaises(archive.coarse_flow_oracle.PrerequisiteError):
             archive.list_archive(self.run)
 
     def test_gds_hash_mismatch_and_unfinished_run_fail(self):
         self.write_check(gds="0" * 64)
-        with self.assertRaises(archive.phase4.PrerequisiteError):
+        with self.assertRaises(archive.coarse_flow_oracle.PrerequisiteError):
             archive.archive(self.run, self.output, False)
         self.assertFalse(self.output.exists())
         shutil.rmtree(self.run / "checks")
         self.write_run("failed")
-        with self.assertRaises(archive.phase4.PrerequisiteError) as raised:
+        with self.assertRaises(archive.coarse_flow_oracle.PrerequisiteError) as raised:
             archive.archive(self.run, self.output, False)
         self.assertIn("not completed", str(raised.exception))
 

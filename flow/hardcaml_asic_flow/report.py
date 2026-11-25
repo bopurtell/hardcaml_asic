@@ -1,7 +1,7 @@
 """Human-readable summary of one TT/LibreLane run directory.
 
 Replaces the ad hoc "cat | grep" and "python3 -c" one-liners around a finished
-run: it reads the same results.json that phase4.py collect writes (computing it
+run: it reads the same results.json that coarse_flow_oracle.py collect writes (computing it
 in memory when it is missing), adds the per-corner timing table, the TT precheck
 rows, and the resizer's own account of what it repaired, then exits nonzero when
 anything is not a pass.
@@ -31,7 +31,7 @@ from pathlib import Path
 import re
 import sys
 
-from . import phase4
+from . import coarse_flow_oracle
 
 
 UNCONSTRAINED_THRESHOLD = 1e30
@@ -52,7 +52,7 @@ def results_for(run_dir):
     stored = run_dir / "results.json"
     if stored.is_file():
         return json.loads(stored.read_text()), str(stored.relative_to(run_dir))
-    return phase4.collect(run_dir), "collected in memory"
+    return coarse_flow_oracle.collect(run_dir), "collected in memory"
 
 
 def flow_dir(run_dir, record):

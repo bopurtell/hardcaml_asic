@@ -10,7 +10,7 @@ performs no setup.
 The default `Target.Inputs.reference_cmos5l_6x4` adopts the revisions and
 floorplan hash originally adopted from the consumer's toolchain lock. The current
 local sources are [`lib/platform/target.ml`](../../lib/platform/target.ml) and
-[`toolchain.lock`](../../toolchain.lock); the absent scaf checkout is not required:
+[`toolchain.lock`](../../toolchain.lock):
 
 | Input | Adopted value |
 | --- | --- |
@@ -66,14 +66,14 @@ that the fanout is positive, and that the derate is below 100% so the early
 multiplier stays positive. It does **not** check that the driving cell exists in
 the standard-cell Liberty: this module opens no file, so a cell that does not
 exist resolves here and is first caught when OpenSTA reads the SDC, or by the
-P4 environment preflight. A project that needs different values passes its own
+environment preflight. A project that needs different values passes its own
 `Target.Inputs.constraints`; that is the only supported route, because every
 LibreLane variable above is protected against raw overrides.
 
 The `6x4` pair is the only resolved combination so far. Other tile constructors
-remain available for declarations used by P0/P1 examples, but attempting to
+remain available for declarations used by library-only examples, but attempting to
 resolve them fails until their floorplans and revisions are adopted. Physical
-file presence and revision/hash checks belong to the explicit P4 preflight before
+file presence and revision/hash checks belong to the explicit preflight before
 physical execution; no PDK is present in ordinary library tests. These
 standard-cell views do not establish an SRAM macro.
 
@@ -90,7 +90,7 @@ physical target. Elaboration produces a circuit with metadata, intent and resour
 without synthesis. `Resolved_flow.Setting.t` and `Resolved_flow.Delay_ns.t` are
 private too: callers can read and pattern-match but cannot construct or update
 these records. `Target.Resolved` is unchanged.
-[P3 emission](../guides/bundle-emission.md) consumes the validated result.
+[Bundle emission](../guides/bundle-emission.md) consumes the validated result.
 
 The TT top has exactly these ports:
 
@@ -115,9 +115,9 @@ ns. Resolution rejects nonfinite or nonpositive clock periods, negative or
 nonfinite maximums, nonfinite minimums or minimums above their maximum
 (negative minimums are allowed), duplicate delays, wrong-direction endpoints,
 delays on `clk`, and additional clocks. It sorts delay endpoints for
-stable emission. P3 renders the resolved primary clock to LibreLane
+stable emission. Bundle emission renders the resolved primary clock to LibreLane
 `CLOCK_PORT`/`CLOCK_PERIOD` and TT `clock_hz`, and the validated delay
-subset to SDC. PT.7 additionally supports exact scalar-stage asynchronous-capture
+subset to SDC. Timing intent additionally supports exact scalar-stage asynchronous-capture
 and enumerated active-low/reset-to-zero exceptions, registered Q anchors and
 Yosys `keep=1` preservation intent. The [timing-intent guide](../guides/timing-intent.md)
 defines the supported mapped-cell/pin subset, fail-closed resolution and standalone
@@ -146,7 +146,7 @@ Liberty's own limits then apply.
 
 | Configuration fact | Owner | Override rule |
 | --- | --- | --- |
-| Top name and generated RTL list | Elaborated design and P3 source set | Protected |
+| Top name and generated RTL list | Elaborated design and bundle source set | Protected |
 | Clock port and period | Typed clock | Protected |
 | Die area, floorplan, PDK, cell library, routing maximum, power pins | Resolved target | Protected |
 | Driving cell, output load, maximum fanout, clock uncertainty and transition, timing derate | Resolved target constraint environment | Protected; change it through `Target.Inputs.constraints` |
@@ -158,7 +158,7 @@ Liberty's own limits then apply.
 
 The existing consumer's `src/config.json` settings fit this boundary: clock
 values come from the typed clock, `FP_SIZING` and `RUN_LINTER` have defaults,
-and its other keys can be supplied as reasoned overrides. P3 populates the
+and its other keys can be supplied as reasoned overrides. Bundle emission populates the
 generated RTL list from emitted files. `Resolved_flow` rejects protected keys
 even when the proposed value matches, so a raw setting cannot become a second
 authority. Its adapter capability check accepts implementation elaborations for

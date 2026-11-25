@@ -1,7 +1,7 @@
 # Named flows and parameter profiles
 
 A project can declare named flows (methodologies) and parameter profiles, and
-any client can discover, preview and run them through the project's CLI. This
+any client can discover and preview them through the project CLI, then execute the frozen plan through the installed provider. This
 works without Workbench, and Workbench or any other client uses the same public
 interfaces. The ownership model is in the
 [architecture](../architecture.md#9-named-methodologies-and-profiles).
@@ -13,27 +13,26 @@ configuration-changing checkpoint reuse.
 
 ## Example project
 
-`hardcaml_asic_example` declares flow `standard` with these profiles:
+The generated starter declares flow `standard` with the `balanced` profile, which leaves both supported settings at their backend defaults. A project may add a delay-focused profile, for example:
 
 | Profile | `SYNTH_STRATEGY` | `SYNTH_ABC_BUFFERING` |
 | --- | --- | --- |
 | `balanced` (default) | `AREA 0` | `false` |
-| `synth_delay` | `DELAY 1` | `false` |
+| `synth_delay` (example addition) | `DELAY 1` | `false` |
 
-FIFO's `asics/fifo_demo/flows/flow_standard.ml` declares the methodology and
-uses `standard_profiles.ml` for its two built-in profiles. In that directory,
+The chip target owns its `flows/flow_standard.ml` declaration. In that directory,
 only direct `flow_*.ml` modules are entries. Each exports
 `create ~additional_profiles` and returns a checked `Flow.Catalog.Entry.t`.
 `flows/<flow-id>/profiles/*.ml` modules export `create ()`, returning one
 checked `Flow.Profile.t`. `flows/dune` opts this collection into provider
 codegen. The generator orders modules by path and emits wiring and the source
 inventory under `_build`. A helper module does not register an entry.
-`project/flow_catalog.ml` still owns both explicit defaults.
+The project catalog owns both explicit defaults.
 
 Profile-directory registration is a separate, per-entry opt-in. The entry
 must include the exact standalone line `(* hardcaml-asic profile directory v1 *)`
 and combine `additional_profiles` with its inline profiles. The generated
-starter, newly rendered flows and FIFO already do this. An unmarked
+starter and newly rendered flows do this. An unmarked
 hand-written entry still registers its methodology in the collection. Its
 profile directory is ignored; Duplicate Profile returns a declaration snippet
 for manual registration and leaves the source unchanged.
@@ -54,15 +53,15 @@ parameters are not automatically exposed by this catalog version.
 
 ## Install and activate the provider
 
-From `hardcaml_asic_example`, in the existing OCaml environment:
+Create, commit and build a standalone `first` starter using the
+[chip target guide](chip-targets.md#render-a-standalone-project). Run the commands
+below from that project's root with the compatible opam switch selected.
+To execute, use an already provisioned tool root (for example the absolute
+`TOOLCHAIN` path from the README demo):
 
-```bash
-python3 -B scripts/asic_dependency.py refresh \
-  --source /absolute/path/to/hardcaml_asic \
-  --mode development
-source .dev/asic/current/activate.sh
-
-hardcaml-asic-flow --version --json
+```sh
+ASIC_TOOLCHAIN="$TOOLCHAIN"
+hardcaml-asic-flow provision --toolchain "$ASIC_TOOLCHAIN" --check
 ```
 
 Named execution requires CLI contract 4 with
@@ -74,8 +73,8 @@ separate operations; existing provisioned `_flow_tools` can be used.
 ## Discover and describe
 
 ```bash
-dune exec -j 20 asics/fifo_demo/cli/chip.exe -- flow list --json
-dune exec -j 20 asics/fifo_demo/cli/chip.exe -- flow describe --flow standard --json
+dune exec ./asic_first/project.exe -- flow list --json
+dune exec ./asic_first/project.exe -- flow describe --flow standard --json
 ```
 
 Description includes the flow's profiles and supported parameters. It is not an
@@ -84,34 +83,38 @@ inspection, physical tools or project elaboration.
 
 ## Preview and run
 
-First preview a concrete selection:
+First preview a concrete selection (requires `jq`):
 
 ```bash
-dune exec -j 20 asics/fifo_demo/cli/chip.exe -- flow plan \
+RUN=$(mktemp -d)
+dune exec ./asic_first/project.exe -- flow plan \
   --flow standard --profile balanced --endpoint synthesis --json \
-  > /tmp/fifo-balanced-plan.json
+  > "$RUN/plan.json"
 
-PLAN_ID=$(jq -er '.plan_identity' /tmp/fifo-balanced-plan.json)
+PLAN_ID=$(jq -er '.plan_identity' "$RUN/plan.json")
 ```
 
 Preview elaborates and inspects the declared inputs to render a concrete bundle
 in memory. It exposes effective settings, provenance and identities, but publishes
 no execution workspace and runs no EDA tools.
 
-Launch with the same selection and expected identity:
+Emit with the same selection and expected identity, then launch the installed provider:
 
-```bash
-dune exec -j 20 asics/fifo_demo/cli/chip.exe -- flow run \
-  --flow standard --profile balanced --endpoint synthesis \
-  --expected-plan-identity "$PLAN_ID"
+```sh
+dune exec ./asic_first/project.exe -- flow emit \
+  --flow standard --profile balanced --endpoint synthesis --json \
+  --expected-plan-identity "$PLAN_ID" --results-root "$RUN" > "$RUN/emission.json"
+BUNDLE=$(jq -er .output_dir "$RUN/emission.json")
+hardcaml-asic-flow stages "$BUNDLE" --methodology-plan "$RUN/plan.json" \
+  --expected-plan-identity "$PLAN_ID" --workspace "$RUN/synthesis" \
+  --checkpoint-store "$RUN/synthesis/checkpoints" \
+  --python "$ASIC_TOOLCHAIN/.venv/bin/python" --support-tools "$ASIC_TOOLCHAIN/tt" \
+  --pdk-root "$ASIC_TOOLCHAIN/pdk" --json
 ```
 
-The project resolves again, rejects stale previews before publication, publishes
-the exact rendered bundle, and invokes the public provider. Native execution
-independently validates the plan against its bundle and retains a checked snapshot.
-It does not trust a profile label alone.
+The project resolves again, rejects stale previews before publication and publishes the exact rendered bundle. The provider independently validates the plan and retains a checked snapshot; it does not trust a profile label alone.
 
-Repeat preview and run with `--profile synth_delay` for the alternative. Do not
+After declaring an additional profile, repeat preview and execution with its ID. Do not
 reuse the balanced preview identity. Source, catalog, request or Git-provenance
 changes can make a preview stale; preview again rather than bypassing the check.
 
@@ -124,25 +127,11 @@ example `--set 'SYNTH_STRATEGY=DELAY 1'`.
 
 With no selection flags, the declared catalog default is used. An explicit flow
 without a profile uses that flow's default profile. A profile without a flow is
-an error. Existing `run --endpoint` and `run --stage` commands keep their existing
-behavior; they do not consult an ambient active-profile selection.
+an error. Consumer CLIs that expose `run --endpoint` and `run --stage` need not consult an ambient active-profile selection.
 
 ## Full-flow execution budget
 
-Both plan and run require an endpoint. For a fresh full flow, preview with
-`--endpoint signoff`, then launch with that preview identity and:
-
-```bash
-dune exec -j 20 asics/fifo_demo/cli/chip.exe -- flow run \
-  --flow standard --profile balanced --endpoint signoff \
-  --expected-plan-identity "$PLAN_ID" --timeout 3600
-```
-
-`--timeout` is an execution-only, positive integer number of seconds per provider
-segment/publication call. It does not change plan identity. Omitting it preserves
-the provider's 600-second default, which was too short for the example's earlier
-Magic DRC runs. This example must use a **signoff** preview identity, not the
-synthesis identity from above.
+Both plan and emit require an endpoint. For a fresh full flow, repeat the preview and emission with `--endpoint signoff`, a new workspace, and that new plan identity. Pass `--timeout 3600` to `stages` if needed. The timeout is a positive number of seconds per provider segment/publication call (default 600) and does not change plan identity.
 
 ## Observe and report
 
@@ -166,19 +155,9 @@ Checkpoint integrity, backend-resolved parameter agreement and required snapshot
 references are validated. A successful report query is not an acceptance verdict.
 Fresh full executions still use the separate `finalize --accept` operation.
 
-## Standalone headless client
+## Standalone headless clients
 
-The example's `scripts/headless_flow.py` demonstrates the full public protocol:
-discover, select, describe, preview, run, observe, report and reconnect. It needs
-explicit project/provider executable paths and roots, imports no provider Python
-modules or Workbench packages, and invokes neither Dune nor private helpers at
-runtime. Build the project executable beforehand.
-
-See the consumer's
-[headless client guide](../../../hardcaml_asic_example/docs/headless_flow.md).
-Its `--timeout` is an overall client budget; its separate `--stage-timeout` is
-forwarded to the project's per-call provider timeout. A receipt is a client-owned
-cache, not provider authority, and reconnect does not replan or relaunch.
+Clients can use the public CLI protocol to discover, select, describe, preview, run, observe, report and reconnect without importing private runtime modules. Keep exact project/provider executable paths, roots and plan identities. A client receipt is a cache, not provider authority; reconnect does not replan or relaunch.
 
 ## Verification and scope
 
@@ -187,7 +166,7 @@ Two fresh actual synthesis executions passed through the headless workflow:
 | Profile | Mapped cells | Mapped cell area (µm²) |
 | --- | ---: | ---: |
 | `balanced` | 673 | 13041.6048 |
-| `synth_delay` | 685 | 13277.4012 |
+| `synth_delay` (example addition) | 685 | 13277.4012 |
 
 Their generated and backend-resolved parameters matched their profiles, RTL/SDC
 hashes were identical, and plan/methodology/bundle identities differed. This is
@@ -195,8 +174,6 @@ synthesis evidence, not a timing-improvement claim or named full-flow acceptance
 Subsequent publication-race, client-setup cleanup and timeout-interface corrections
 have separate regression checks; the physical record remains its original snapshot.
 
-See [curated evidence](../../evidence/namedflow/20261015-real-synthesis.json),
-[implementation progress](../development/project-flow-catalog-progress.md), and
-[historical methodology payloads](../reference/native-historical-methodology.md).
-Source-artifact stamping, Workbench application integration, arbitrary operation
+See [historical methodology payloads](../reference/native-historical-methodology.md).
+Source-artifact stamping, arbitrary operation
 substitution and configuration-changing checkpoint branches remain separate work.

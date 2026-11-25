@@ -87,7 +87,7 @@ sys.exit(mode.get('precheck_exit',0))
 
 def suite(cli, consumer, package, public):
     sys.path.insert(0,str(package.parent))
-    from hardcaml_asic_flow import phase4, ocaml_backend, cli as public_cli
+    from hardcaml_asic_flow import coarse_flow_oracle, ocaml_backend, cli as public_cli
     with tempfile.TemporaryDirectory(prefix="postcheck ' Ω ") as tmp:
         root=Path(tmp); tools=root/'tools'; pre=tools/'precheck'; pre.mkdir(parents=True)
         (tools/'tech').mkdir()
@@ -147,7 +147,7 @@ def suite(cli, consumer, package, public):
                 old=os.environ.copy()
                 try:
                     os.environ.clear(); os.environ.update(env)
-                    expected=phase4.check(args)
+                    expected=coarse_flow_oracle.check(args)
                 finally:
                     os.environ.clear(); os.environ.update(old)
                 legacy=json.loads(expected.check_record.read_text())
@@ -172,7 +172,7 @@ def suite(cli, consumer, package, public):
                     old=os.environ.copy()
                     try:
                         os.environ.clear(); os.environ.update(env)
-                        expected=phase4.check(args)
+                        expected=coarse_flow_oracle.check(args)
                     finally:
                         os.environ.clear(); os.environ.update(old)
                     legacy=json.loads(expected.check_record.read_text())
@@ -196,7 +196,7 @@ def suite(cli, consumer, package, public):
             old=os.environ.copy()
             try:
                 os.environ.clear(); os.environ.update(env)
-                expected=phase4.check(args)
+                expected=coarse_flow_oracle.check(args)
             finally:
                 os.environ.clear(); os.environ.update(old)
             legacy=json.loads(expected.check_record.read_text())
@@ -279,7 +279,7 @@ def suite(cli, consumer, package, public):
         old=os.environ.copy()
         try:
             os.environ.clear(); os.environ.update(env)
-            expected=phase4.check(args,context=rec,replay_trace=trace)
+            expected=coarse_flow_oracle.check(args,context=rec,replay_trace=trace)
         finally:
             os.environ.clear(); os.environ.update(old)
         legacy=json.loads(expected.check_record.read_text())
@@ -304,7 +304,7 @@ def suite(cli, consumer, package, public):
         try:
             os.environ.clear(); os.environ.update(env)
             outcome=public_cli.Operations().postcheck(args)
-            assert isinstance(outcome,phase4.CheckOutcome) and outcome.exit_code==0
+            assert isinstance(outcome,coarse_flow_oracle.CheckOutcome) and outcome.exit_code==0
             original=ocaml_backend.binary
             ocaml_backend.binary=lambda _: (_ for _ in ()).throw(OSError('missing helper'))
             try:

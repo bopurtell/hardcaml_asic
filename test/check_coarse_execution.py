@@ -15,7 +15,7 @@ from unittest import mock
 
 def suite(consumer, package):
     sys.path.insert(0, str(package.parent))
-    from hardcaml_asic_flow import cli, phase4, report, runner
+    from hardcaml_asic_flow import cli, coarse_flow_oracle, report, runner
     count = 0
     for mode in ('none', 'archive-reject', 'run-failed', 'run-interrupted',
                  'run-failed-collect', 'run-interrupted-collect', 'fail-run', 'fail-postcheck', 'fail-collect',
@@ -50,19 +50,19 @@ def suite(consumer, package):
                 if mode=='fail-'+name or mode in ('run-failed-collect','run-interrupted-collect') and name=='collect':
                     raise ValueError(name+' fixture failure')
                 if mode in ('int-'+name, 'term-'+name):
-                    raise phase4.FlowInterrupted(2 if mode.startswith('int') else 15)
+                    raise coarse_flow_oracle.FlowInterrupted(2 if mode.startswith('int') else 15)
             class Operations:
                 def run(self, args):
                     # Native callback-boundary interruption retains allocation;
                     # the physical run service returns that saved outcome.
                     if mode=='fail-run': boundary('run')
-                    return phase4.RunOutcome('a'*32, run_dir, run_dir/'run.json', status,
+                    return coarse_flow_oracle.RunOutcome('a'*32, run_dir, run_dir/'run.json', status,
                         1 if status=='failed' else 130 if status=='interrupted' else 0)
                 def postcheck(self, args): boundary('postcheck'); raise ValueError('postcheck fixture failure')
                 def collect(self, args): boundary('collect'); return 0
                 def report(self, args):
                     boundary('report')
-                    return 2 if mode=='malformed-report' else report.report(source, phase4.collect(source), 'fixture', output=lambda _: None)
+                    return 2 if mode=='malformed-report' else report.report(source, coarse_flow_oracle.collect(source), 'fixture', output=lambda _: None)
                 def archive(self, args): boundary('archive'); return 2
             args=SimpleNamespace(stage='full' if full else 'synthesis', archive=archive, force=False,
                                  json=True, verbose=False)
@@ -72,7 +72,7 @@ def suite(consumer, package):
             with contextlib.redirect_stdout(stdout),contextlib.redirect_stderr(stderr),mock.patch.object(
                     runner,'execute',side_effect=lambda *a,**kw: original(*a,**kw,clock=lambda: next(ticks))):
                 try: code=cli.execute_sequence(args,Operations())
-                except (ValueError, phase4.FlowInterrupted): code=2
+                except (ValueError, coarse_flow_oracle.FlowInterrupted): code=2
             if mode=='fail-run':
                 assert actual.returncode==2 and not actual.stdout and not run_dir.exists()
                 continue

@@ -17,7 +17,7 @@ runtime = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(runtime)
 tests = 0
 
-with tempfile.TemporaryDirectory(prefix="pt7 Tcl startup ") as temporary:
+with tempfile.TemporaryDirectory(prefix="linked timing Tcl startup ") as temporary:
     root = Path(temporary)
     receipt = root / "receipt.json"
     receipt.write_text(json.dumps(dict(schema=1, audit_id="actual-rerouted-receipt")) + "\n")
@@ -107,4 +107,4 @@ puts "FIXTURE_SDC_LOAD_COUNT $::sdc_loads"
     assert result.returncode == 1 and "PT7_RECEIPT" in result.stderr
     assert "PT7_AUDIT_RECEIPT" not in result.stdout and "FIXTURE_SDC_LOAD" not in result.stdout
 
-print(f"PT7 Tcl startup: {tests} rerouted-environment/order/failure checks passed; tclsh fixtures, no EDA")
+print(f"Linked timing Tcl startup: {tests} rerouted-environment/order/failure checks passed; tclsh fixtures, no EDA")

@@ -1,11 +1,11 @@
 # Explicit-stage quickstart
 
-`hardcaml-asic-flow stages` runs the implementation as six sequential
+For a non-macro bundle, `hardcaml-asic-flow stages` runs the implementation as seven sequential
 boundaries, each publishing a checkpoint you can inspect, restart from and watch
 live:
 
 ```text
-synthesis → floorplan → placement → cts → routing → signoff
+synthesis → floorplan → placement → cts → routing → timing → signoff
 ```
 
 The coarse `run`/`execute` path is still supported alongside it. This page is
@@ -20,56 +20,36 @@ typed recipe construction. To run a project's named flow or profile, see
   provisioned tool root ([bootstrap](bootstrap.md)).
 - Docker and the exact tested image
   `sha256:d109140b8f17fc54f4fca998beb8124f4949404ec52e339eebd2250854a18b5a`.
-- An installed provider with CLI contract 4. Activating an older consumer pin
+- An installed provider with CLI contract 4 and `timing_stage1` capability. Activating an older consumer pin
   does not upgrade it.
 
 <a id="run-and-observe"></a>
-## Run from the example project
-
-After activating a contract-4 installation, from `hardcaml_asic_example`:
-
-```sh
-. .dev/asic/current/activate.sh
-dune exec -j 20 asics/fifo_demo/cli/chip.exe -- run --endpoint synthesis
-```
-
-Endpoints are `synthesis`, `floorplan`, `placement`, `cts`, `routing` and
-`signoff`. The project CLI:
-
-- emits or reuses the bundle (or skips that with `--bundle`);
-- resolves its source, results and tool roots;
-- picks a new, unique workspace under its results with checkpoints inside it;
-- execs the provider's `stages`, forwarding its output unchanged.
-
-`--stage synthesis|full` selects the Classic path instead and cannot be combined
-with `--endpoint`. See the
-[consumer quickstart](../../../hardcaml_asic_example/README.md#explicit-stage-run-and-independent-progress-reader).
-
 ## Run with the installed command
 
+Continue from the [README demo](../../README.md#3-simulate-and-emit-an-example-no-pdk-or-docker)
+with `BUNDLE` and `TOOLCHAIN` set. Provision the toolchain before launch.
 Choose a **new** workspace whose parent exists. Checkpoints go inside it, and
 observations default to `<workspace-parent>/observations`, outside it.
 
 ```sh
-BUNDLE=/absolute/path/to/published/bundle
-TT=/absolute/path/to/support-tools
-PDK=/absolute/path/to/pdk
-FLOW_PYTHON=/absolute/path/to/flow-venv/bin/python
-WORKSPACE=/absolute/path/to/new-workspace
+TT="$TOOLCHAIN/tt"
+PDK="$TOOLCHAIN/pdk"
+FLOW_PYTHON="$TOOLCHAIN/.venv/bin/python"
+WORKSPACE=$(mktemp -d)/implementation
 
-hardcaml-asic-flow stages "$BUNDLE" --endpoint signoff \
+hardcaml-asic-flow stages "$BUNDLE" --endpoint floorplan \
   --support-tools "$TT" --pdk-root "$PDK" --python "$FLOW_PYTHON" \
   --workspace "$WORKSPACE" --checkpoint-store "$WORKSPACE/checkpoints" \
   --timeout 7200
 ```
 
-This is an expensive full implementation. For a short first run, use
-`--endpoint floorplan`. `--timeout` applies to each launch and defaults to 600
+This first run ends at floorplan, so it can be resumed below. For a fresh full
+implementation, choose a new workspace and `--endpoint signoff`. `--timeout` applies to each launch and defaults to 600
 seconds, which is too short for full signoff. Instead of `--endpoint`, you can
-pass `--plan RECIPE.json` with a schema-3 recipe:
+pass `--plan RECIPE.json` with a schema-4 recipe:
 
 ```json
-{"schema_version":3,"stages":["synthesis","floorplan","placement","cts","routing","signoff"],"initial_boundary":null}
+{"schema_version":4,"stages":["synthesis","floorplan","placement","cts","routing","timing","signoff"],"initial_boundary":null}
 ```
 
 The command immediately flushes an allocation receipt naming the observation
@@ -132,8 +112,8 @@ hardcaml-asic-flow stages "$BUNDLE" --endpoint signoff \
 ```
 
 Use the **retained original workspace**, the same bundle, tool and PDK roots, and
-a compatible runtime. The schema-3 equivalent has stages
-`placement, cts, routing, signoff` and `initial_boundary: "floorplan"`.
+a compatible runtime. The schema-4 equivalent has stages
+`placement, cts, routing, timing, signoff` and `initial_boundary: "floorplan"`.
 
 Allowed restarts:
 
@@ -143,7 +123,8 @@ Allowed restarts:
 | floorplan | placement |
 | placement | cts |
 | cts | routing |
-| routing | signoff |
+| routing | timing |
+| timing | signoff |
 | signoff | nowhere (terminal) |
 
 Recipes never skip intervening boundaries; going straight from synthesis to
@@ -152,8 +133,9 @@ checkpoint for you.
 
 ## Finalize separately
 
-External checks and acceptance are a separate operation. Only **one completed
-fresh six-stage execution** is eligible, so a resumed attempt cannot be finalized
+External checks and acceptance are a separate operation. For ordinary full
+non-macro implementation, only **one completed
+fresh complete execution** is eligible, so a resumed attempt cannot be finalized
 by stitching history.
 
 ```sh
@@ -164,7 +146,8 @@ hardcaml-asic-flow finalize "$EXECUTION_JSON" --operation-store "$OPERATIONS" \
 hardcaml-asic-flow finalization-inspect "$FINALIZATION_ATTEMPT"
 ```
 
-The first command publishes results with acceptance `not_evaluated`. The second
+Use the execution JSON of the fresh full attempt, not the resumed floorplan
+example above. The first command publishes results with acceptance `not_evaluated`. The second
 also runs TT precheck, gate-level replay in the bound image, and the full
 acceptance policy. Finalization never reruns implementation or reopens the stage
 stream. See [finalization](flow.md#segmented-terminal-results-and-external-acceptance-opt-in).
@@ -175,10 +158,6 @@ original input, support and PDK roots and image. All of them are path-bound.
 ## Not supported
 
 - Archive or GC of segmented artifacts.
-- Relocation, native or macro flows, and images other than the tested one.
+- Relocation, native flows, and images other than the tested one. Limited stock macro stages are described in [segmented SRAM](segmented-sram.md).
 - Arbitrary DAGs, custom steps or per-stage settings.
 - Execution recovery, store-wide idempotency, or fsync durability.
-- Workbench application integration.
-
-Real six-stage physical, observed and accepted runs are recorded in the
-[phase plan](../phase_plan.md#explicit-stage-refactor-closeout).

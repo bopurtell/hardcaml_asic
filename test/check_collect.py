@@ -23,9 +23,9 @@ RETAINED = Path('/tmp/opencode/native-final-integration/finalizations/20261014T0
 def suite(cli, consumer, package, fixtures, public=None, retained=RETAINED):
     sys.path.insert(0, str(package.parent))
     sys.path.insert(0, str(fixtures.parent))
-    from hardcaml_asic_flow import phase4, cli as public_cli, ocaml_backend, report
-    import test_phase4
-    original = phase4.collect
+    from hardcaml_asic_flow import coarse_flow_oracle, cli as public_cli, ocaml_backend, report
+    import test_coarse_flow
+    original = coarse_flow_oracle.collect
     count = 0
 
     def invoke(request):
@@ -45,10 +45,10 @@ def suite(cli, consumer, package, fixtures, public=None, retained=RETAINED):
         count += 1
         return expected
 
-    # Retained phase4 fixtures execute unchanged, substituting only a differential
+    # Retained coarse_flow_oracle fixtures execute unchanged, substituting only a differential
     # observer around the REAL Python implementation.
-    with mock.patch.object(phase4, 'collect', side_effect=compare):
-        tests = unittest.defaultTestLoader.loadTestsFromTestCase(test_phase4.CollectorTest)
+    with mock.patch.object(coarse_flow_oracle, 'collect', side_effect=compare):
+        tests = unittest.defaultTestLoader.loadTestsFromTestCase(test_coarse_flow.CollectorTest)
         result = unittest.TextTestRunner().run(tests)
         assert result.wasSuccessful()
 
@@ -145,7 +145,7 @@ def suite(cli, consumer, package, fixtures, public=None, retained=RETAINED):
         for value in [None, False, True, 1, 1.0, float('nan'), 10**100]:
             for reason in [None, False, '', 'absent']:
                 actual=invoke(dict(operation='metric', value=value, reason=reason))
-                expected=phase4.metric(value,'count','fixture','fixture','fixture',reason=reason)
+                expected=coarse_flow_oracle.metric(value,'count','fixture','fixture','fixture',reason=reason)
                 assert actual == json.dumps(expected, indent=2, sort_keys=True)+'\n'
         for raw in ['{"n":NaN,"i":Infinity,"m":-Infinity,"e":1e999,"b":true,"h":'+str(10**100)+'}',
                     '{"dup":1,"dup":2}', '{"x":"Ω\\nquoted\\\""}', '[1,1.0,-0.0]']:
@@ -248,7 +248,7 @@ def main():
             from reference_harness import installed_prefix
             installed_prefix(repo, prefix)
             driver=root/'check_collect.py'; shutil.copyfile(__file__,driver)
-            fixtures=root/'test_phase4.py'; shutil.copyfile(repo/'test/test_phase4.py',fixtures)
+            fixtures=root/'test_coarse_flow.py'; shutil.copyfile(repo/'test/test_coarse_flow.py',fixtures)
             consumer=root/'consumer'; consumer.mkdir()
             (consumer/'dune-project').write_text('(lang dune 3.0)\n')
             (consumer/'dune').write_text('(executable (name main) (libraries hardcaml_asic.execution))\n')
@@ -269,7 +269,7 @@ def main():
         suite((args.cli or repo/'_build/default/bin/experimental_collect.exe').resolve(),
               (args.consumer or repo/'_build/default/test/collect_consumer.exe').resolve(),
               (args.package or repo/'flow/hardcaml_asic_flow').resolve(),
-              (args.fixtures or repo/'test/test_phase4.py').resolve(),args.public)
+              (args.fixtures or repo/'test/test_coarse_flow.py').resolve(),args.public)
 
 
 if __name__=='__main__': main()

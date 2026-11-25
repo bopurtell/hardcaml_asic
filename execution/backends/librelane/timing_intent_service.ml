@@ -16,9 +16,9 @@ let posix_signal n =
     Sys.sigvtalrm,26;Sys.sigprof,27;Sys.sigpoll,29;Sys.sigsys,31] with
   | Some p -> p | None when n>0 && n<128 -> n | None -> failwith "unknown process signal"
 let capture ?(timeout=600.) ~run_dir ~context ~binding ~pdk_root ~resources ~environment ~cancel ~verify_runtime () =
-  let docker=match binding with T.Docker d -> d | T.Native _ -> failwith "PT7 linked synthesis requires qualified immutable Docker runtime" in
+  let docker=match binding with T.Docker d -> d | T.Native _ -> failwith "Linked timing synthesis requires qualified immutable Docker runtime" in
   if docker.image_id<>Hardcaml_asic_flow_domain.Backends.Librelane.Mapping.tested_image_id then
-    failwith "PT7 linked synthesis requires the qualified immutable image";
+    failwith "Linked timing synthesis requires the qualified immutable image";
   checked (verify_runtime ());
   let dir=run_dir^"/timing-intent" in
   Unix.mkdir dir 0o700;
@@ -33,7 +33,7 @@ let capture ?(timeout=600.) ~run_dir ~context ~binding ~pdk_root ~resources ~env
     Fun.protect ~finally:(fun () -> close_out_noerr oc) (fun () ->
       let b=Bytes.create 65536 in
       let rec copy ()=let n=input ic b 0 (Bytes.length b) in if n>0 then (output oc b 0 n;copy ()) in copy ()));
-  if hash staged<>helper_hash || hash helper<>helper_hash then failwith "PT7 runtime helper changed while staging";
+  if hash staged<>helper_hash || hash helper<>helper_hash then failwith "Timing runtime helper changed while staging";
   let base_hash=if qualified then (
     let source=run_dir^"/project/timing_intent_runtime.py" and dest=dir^"/timing_intent_runtime.py" in
     let ic=open_in_bin source in
@@ -92,10 +92,10 @@ let capture ?(timeout=600.) ~run_dir ~context ~binding ~pdk_root ~resources ~env
    Option.iter failwith publication_error;
   if not success then (
     match result.process.outcome with
-    | Cancelled n -> raise (Runner.Callback_error (Runner.cancellation ~signal:(if n=Sys.sigint || n=2 then 2 else 15) "PT7 linked STA interrupted"))
-    | Timed_out -> raise (Runner.Callback_error (Runner.failure ~exit_code:124 "PT7 linked STA timed out"))
-    | _ -> failwith ("PT7 linked STA failed; retained timing-intent companion: " ^
+    | Cancelled n -> raise (Runner.Callback_error (Runner.cancellation ~signal:(if n=Sys.sigint || n=2 then 2 else 15) "Linked STA interrupted"))
+    | Timed_out -> raise (Runner.Callback_error (Runner.failure ~exit_code:124 "Linked STA timed out"))
+    | _ -> failwith ("Linked STA failed; retained timing-intent companion: " ^
         (match verified with Error e -> e | Ok () -> "process did not complete")));
   match Timing_intent_flow.inspect ~run_dir () with
   | Ok _ -> ()
-  | Error e -> failwith ("PT7 linked STA evidence invalid: "^e)
+  | Error e -> failwith ("Linked STA evidence invalid: "^e)

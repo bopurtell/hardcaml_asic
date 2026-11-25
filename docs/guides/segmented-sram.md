@@ -20,11 +20,11 @@ Synthesis → Floorplan → Placement → CTS → Routing → Timing
 This is real segmented execution, not a fallback to coarse `run --stage full`.
 Native schema-3 checkpoints support adjacent explicit-stage restarts in the same
 path-bound workspace. Named workflows remain fresh-only. Timing is terminal for
-this capability. Macro Signoff, finalization, acceptance, PT.7 linked timing
+this capability. Macro Signoff, finalization, acceptance, linked timing-intent
 exceptions, schema-1 physical continuation, relocation and archive are unsupported.
 Multiple macros and other macro/placement profiles are outside this qualified scope.
 
-Ordinary extracted STA at Timing is distinct from the PT.7 declaration/exception
+Ordinary extracted STA at Timing is distinct from the timing-intent declaration/exception
 producer. Timing completion is distinct from meeting a design's timing goal.
 
 ## Terminology
@@ -87,19 +87,6 @@ Controlled qualification passes:
 - Virtualenv-path regression: preserve `.venv/bin/python` activation rather than
   resolving it to the base interpreter.
 
-Real installed qualification uses the independent example's program-memory
-specimen, not Protemu:
-
-```text
-hardcaml_asic_example/.dev/sram-segmented-20261112T080824Z/
-  generations/6aad7c011d6c49dbae5c2838beb69f9c/receipt.json
-  real-qualification-20261112T082233Z-retry1/verified-summary.json
-```
-
-The capture records 839 source files and 1,100 installed file identities. It is a
-development capture with explicit dirty-source attribution, not a clean release
-commit or source-stamped P6 qualification.
-
 **Actual execution:** six-stage independent checkpoint chain with five restarts,
 plus a separate fresh named prefix through Timing. Predecessor producer directories
 were moved away before continuation. All 12 schema-3 checkpoints and 24 execution/
@@ -126,12 +113,4 @@ with a preinstalled captured provider and built consumer. It does not silently
 replace project installations. `--through timing --named-prefix` exercises both
 paths; it runs real EDA and needs an allocated serial six-worker lane.
 
-## Workbench proof and limits
-
-The [Workbench release evidence](../../../silver/docs/sram_segmented_release.md)
-records an actual production TUI launch, six-stage observation, same-store restart,
-cache revalidation and submission deduplication using this provider generation.
-
-This qualifies tooling on the small example. It does not repair Protemu's failed
-48 MHz timing or unresolved Magic findings, complete PT.3c design acceptance,
-establish generic macro support, or qualify finalization/signoff.
+This qualifies the tooling on a small example; it does not establish generic macro support or qualify segmented finalization/signoff.

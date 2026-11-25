@@ -16,13 +16,13 @@ No registry publication is needed.
 
 ## Install a checkout for your user
 
-See [Install the provider](../../README.md#install-the-provider). `./install.sh`
+See [Install the provider](../../README.md#2-install-the-provider). `./install.sh`
 builds the current working tree with Dune and passes its install manifest to
 opam (`install --assume-built`, local checkout pin). The selected switch owns the
 package; its consumers need no extra `OCAMLPATH`. Run the installer again after
 changing or updating the checkout, even if the package version is unchanged.
 Use `opam remove hardcaml_asic` to uninstall, `opam pin remove hardcaml_asic`
-to forget the checkout, and remove the two user-created launcher links.
+to forget the checkout, and remove the four user-created launcher links.
 
 `~/.local/bin/{hardcaml_asic,hardcaml-asic-flow}` both link to the native
 `$(opam var bin)/hardcaml-asic-flow`; put `~/.local/bin` on `PATH`.
@@ -58,10 +58,7 @@ SIGTERM stop the active Dune process group, including workers, before exit.
 
 This does not select source revisions, install opam prerequisites, provision EDA
 tools, activate a consumer environment, or publish a consumer receipt. Those
-remain caller-owned. Electrum tees these diagnostics into its generation log and
-installs Workbench separately. Its pinned revisions without this script continue
-to use its local fallback; new upstream behavior requires a capture containing
-the script. Direct users can redirect stderr to retain a log.
+remain caller-owned.  Direct users can redirect stderr to retain a log.
 
 The lightweight installer contract checks run with
 `dune build -j4 --no-buffer @test/install-script`.
@@ -71,8 +68,7 @@ The lightweight installer contract checks run with
 - The public API rename has no aliases: `Build` → `Elaborated_project`,
   `Resolved_build` → `Resolved_flow`, the resolved field `build` →
   `elaborated_project`, and `Bundle.render ?simulation_build` →
-  `?simulation_project`
-  ([details](../phase_plan.md#public-api-rename-migration-and-evidence)).
+  `?simulation_project`.
 - `Chip_target.create ?source_inputs` must be nonempty before emission. Emission goes
   through `Chip_target.emit_bundle` / `Chip_target.emit_bundle_to_store`
   ([entry-point guide](bundle-emission.md#project-centered-entry-point)).
@@ -86,7 +82,7 @@ that has the OxCaml/Hardcaml toolchain:
 
 ```sh
 ASIC_REV=<full-hardcaml_asic-commit-hash>
-opam pin add --no-action hardcaml_asic "git+https://github.com/LeEmperor/hardcaml_asic.git#$ASIC_REV"
+opam pin add --no-action hardcaml_asic "git+https://github.com/bopurtell/hardcaml_asic.git#$ASIC_REV"
 opam install hardcaml_asic
 ```
 
@@ -110,16 +106,14 @@ Record the source snapshot separately; a dirty worktree cannot be identified by 
 commit hash. [`test/package_consumer_smoke.sh`](../../test/package_consumer_smoke.sh)
 checks this route with a fresh prefix and an unrelated Dune project.
 
-For day-to-day development of a consumer against a local provider checkout, the
-example uses an isolated refresh/activation workflow with recorded and development
-modes; see the [consumer dependency workflow](../development/consumer-dependency-workflow.md).
+
 
 ## The installed `hardcaml-asic-flow` command
 
 ```text
 $PREFIX/bin/hardcaml-asic-flow                            native OCaml command
 $PREFIX/bin/hardcaml-asic-experimental-*                  native service helpers
-$PREFIX/lib/hardcaml_asic/flow/hardcaml_asic_flow/        nine private runtime modules
+$PREFIX/lib/hardcaml_asic/flow/hardcaml_asic_flow/        private runtime modules
 $PREFIX/lib/hardcaml_asic/flow/hardcaml_asic_flow/data/   toolchain.sh, toolchain.lock, managed-python.json, version.txt
 ```
 
@@ -161,22 +155,23 @@ effective cgroup-v2 `pids.max=6`. A CPU quota or an observer-ready boolean alone
 does not establish this envelope. Keep an exclusive EDA interval under the global
 budget; no flow activation is implied by selecting this environment variable.
 
-The installed Python runtime is exactly nine modules: `__init__`,
+The installed Python runtime contains thirteen modules: `__init__`,
 `backend_protocol`, `librelane_bridge`, `stage_metadata_probe`, `probe`,
-`runtime_observation`, `runtime_contract`, `managed_python` and `paths`.
+`runtime_observation`, `runtime_contract`, `managed_python`, `paths`,
+`macro_flow`, `physical_runtime`, `timing_intent_runtime` and `timing_physical_runtime`.
 
 **Python API break:** the installed `execution_plan`, `flow_observation`,
 `IncrementalReader`, service/collector/report/archive and compatibility CLI
 imports are retired. Use the CLI or the `hardcaml_asic.execution` OCaml library.
 Their sources remain in the checkout as references. The retired modules are
 `__main__`, `archive`, `cli`, `ocaml_backend`, `checkpoint`, `stages`,
-`identity`, `execution_transport`, `execution_plan`, `phase4`, `report`,
+`identity`, `execution_transport`, `execution_plan`, `coarse_flow_oracle`, `report`,
 `presentation`, `result_store`, `runner`, `flow_observation` and
 `finalization`. `PYTHONPATH=/path/to/checkout/flow` reaches them, but that is not
 installed support. Package 0.1.0 and CLI contract 4 are unchanged because the
 CLI contract itself is unchanged.
 
-Until ASIC P6.5, `--version` reports no source revision or checkout state and
+`--version` reports no source revision or checkout state and
 does not verify that the linked OCaml library was built from the same artifact as
 the command. It says so explicitly in both human and `--json` output.
 
@@ -200,10 +195,9 @@ package 0.1.0, record schema 1 and source identity. Changes since contract 1:
 - Unchanged: `collect --json` still writes `results.json`; `collect --stdout` and
   `report` stay read-only; `archive --list --json` is unsupported.
 
-The example accepts exactly contracts 2, 3 and 4 for Classic operations and
-requires 4 for `project run --endpoint`. After refreshing a consumer's private
-prefix, source its `current/activate.sh` in the shell that runs Dune and the CLI
-(a refresh cannot activate its parent shell). The full matrix is in the
+Consumers should check the advertised contract before making requests. After
+installing into a private prefix, select it in the shell that runs both Dune and
+the CLI. The full matrix is in the
 [flow guide](flow.md#default-result-store-and-cli-contract-4).
 
 ## Resolve TT/LibreLane collateral
@@ -249,8 +243,7 @@ official image's Python and LibreLane metadata are checked too
 ([runtime policy](flow.md#runtime-policy-and-launch-binding)).
 
 A consumer's thin bootstrap should delegate to the installed provider, with no
-copied pins, no source fallback and no automatic provider refresh. The example
-selects `--toolchain` > `TOOLCHAIN` > its own absolute `_flow_tools/`; see
+copied pins, no source fallback and no automatic provider refresh. A consumer may select `--toolchain` > `TOOLCHAIN` > its own absolute tool root; see
 [consumer check](bootstrap.md#consumer-check).
 
 Validate an emitted bundle against the installed collateral:
@@ -290,15 +283,6 @@ explicit action.
 - **`--check`** only inspects the receipt and probes readiness.
 - **`--offline`** may install from the verified archive cache, fails on a cache
   miss, and never falls back to another interpreter. It is not read-only.
-- **Not attestation:** archive integrity plus a local receipt is not P6.5
-  source/runtime attestation.
+- **Not attestation:** archive integrity plus a local receipt is not source/runtime attestation.
 
-[Runtime evidence](../../evidence/managed-python/actual-runtime.json) records
-Tcl 9.0.4, Tk 9.0, OpenSSL 3.5.9 and wheel-only LibreLane 3.1.0.dev3 evaluating
-official Tcl. To reproduce that experiment, you must explicitly opt in to
-downloads; it is not a read-only check:
-
-```sh
-python3 -I -B experiments/managed_python/accept.py \
-  --example /absolute/path/to/hardcaml_asic_example --acquire-and-install
-```
+The qualified managed runtime uses Tcl 9.0.4, Tk 9.0, OpenSSL 3.5.9 and wheel-only LibreLane 3.1.0.dev3 evaluating official Tcl.

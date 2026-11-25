@@ -305,7 +305,7 @@ let make
        J.fail "named segmented SRAM Signoff is unsupported; maximum endpoint is Timing";
      if List.exists ["timing_intent";"timing_native_coverage";"timing_physical_qualification"]
        ~f:(fun key -> List.Assoc.mem (match m with `Assoc xs -> xs | _ -> []) key ~equal:String.equal)
-     then J.fail "named segmented SRAM does not support PT7 linked timing intent or exceptions");
+     then J.fail "named segmented SRAM does not support linked timing intent or exceptions");
   let configurable =
     Hardcaml_asic_flow_domain.Methodology.configurable
       (Hardcaml_asic_flow_domain.Catalog.Entry.methodology

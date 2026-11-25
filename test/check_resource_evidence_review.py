@@ -41,7 +41,7 @@ def main():
     def reject_archive(root,out):
         call([cli,'archive',str(root),'--output',str(out),'--json'],2)
         assert not out.exists(),'a rejected assertion must not publish an archive'
-    with tempfile.TemporaryDirectory(prefix='pt5-review-regressions-') as temp:
+    with tempfile.TemporaryDirectory(prefix='resource-review-regressions-') as temp:
         temp=Path(temp)
         root=temp/'parser';flow,mapped,record=fixture(root)
         record.update(requested_stage='full',completed_stage='full');write(root/'run.json',record)

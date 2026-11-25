@@ -40,7 +40,7 @@ readonly OX_REPOSITORY=git+https://github.com/oxcaml/opam-repository.git
 # unix is part of the compiler distribution and is not an opam package, so it is absent.
 readonly PACKAGES=(
     ocaml dune
-    core hardcaml yojson cryptokit
+    core hardcaml yojson cryptokit zarith spawn conf-python-3
     ppx_jane ppx_hardcaml
     expect_test_helpers_core
 )

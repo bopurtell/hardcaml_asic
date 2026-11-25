@@ -195,7 +195,7 @@ read_lockfile() {
         die "$EX_LOCKFILE" "runtime policy: $policy_detail"
     fi
 
-    # The image name is derived exactly as scripts/phase4.py derives it, rather than
+    # The image name is derived exactly as scripts/coarse_flow_oracle.py derives it, rather than
     # pinned separately, so the two cannot disagree about which image a run uses.
     librelane_image="ghcr.io/librelane/librelane:$librelane_version"
 
@@ -454,7 +454,7 @@ repo_git() {
 # ---------------------------------------------------------------------------
 # Bring one checkout to one exact revision, idempotently. Fetches by hash with --depth 1,
 # so what lands is the pinned commit and nothing else; `git rev-parse HEAD` afterwards is
-# the revision itself, which is what phase4.py preflight compares against.
+# the revision itself, which is what coarse_flow_oracle.py preflight compares against.
 fetch_pinned() {
     local dir=$1 repository=$2 revision=$3 branch=$4 label=$5
     local actual=""
@@ -554,7 +554,7 @@ fetch_pdk() {
     fi
 
     # PDK_ROOT is the clone root and the flow reads views from $PDK_ROOT/$PDK/..., the
-    # same layout phase4.py resolves the manifest's technology references against.
+    # same layout coarse_flow_oracle.py resolves the manifest's technology references against.
     if [[ -d $pdk_dir/$pdk_name ]]; then
         info "PDK_ROOT $pdk_dir contains $pdk_name"
     elif [[ $check -eq 1 ]]; then

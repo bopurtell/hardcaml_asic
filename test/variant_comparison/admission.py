@@ -104,7 +104,7 @@ def main():
         assert done.is_set(), 'race mutation must actually execute'
         return result
 
-    with tempfile.TemporaryDirectory(prefix='pt8-b-admission-') as temp:
+    with tempfile.TemporaryDirectory(prefix='variant-admission-') as temp:
         root = Path(temp)
         left, right = root / 'left', root / 'right'
         member = bound_fixture(left)
@@ -240,7 +240,7 @@ def main():
         j['modules']['top']['cells'].pop('hc_resource_6_memory')
         write(net, j)
         call([consumer, 'archive-inspect', archive])
-    print(f'PT8 B review corrections: {checks} real-service admission/generation/archive checks passed')
+    print(f'Variant comparison review corrections: {checks} real-service admission/generation/archive checks passed')
 
 
 if __name__ == '__main__':

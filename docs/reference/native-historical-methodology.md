@@ -36,7 +36,7 @@ Recorded fields:
 - `endpoint`: requested endpoint under that fixed flow.
 - `methodology_hash`, `plan_identity`, `bundle_identity`: main-library identities.
   The plan identity is the exact preview/expected identity retained in the run
-  receipt, never an attempt ID or P6 source stamp.
+  receipt, never an attempt ID or source stamp.
 - `effective_parameters`: typed `winning: {assignment: {key, value}, owner}` and
   `overridden` contributions in oldest-first order. Owners retain methodology,
   profile, request or project identity; project owners retain their original reason.

@@ -77,9 +77,9 @@ let run ~bundle ~support_tools ~pdk_root ~python ~resources ~environment ~runs ~
      let native=get manifest "timing_native_coverage" in
      if get native "schema"<>codec (J.integer "2") || get native "profile"<>s "opensta-2.7-native-state-v2"
      then invalid_arg "unsupported native producer profile; emit/capture native profile 2 before synthesis");
-    if pt7 && not qualification && stage<>Execution_plan.Coarse.Synthesis then invalid_arg "PT7 native producer ordinary integration supports coarse synthesis only";
-   if pt7 && native then invalid_arg "PT7 native producer requires the qualified immutable Docker runtime";
-   if pt7 && macro then invalid_arg "PT7 linked analysis currently supports macro-free coarse synthesis only";
+    if pt7 && not qualification && stage<>Execution_plan.Coarse.Synthesis then invalid_arg "Native timing producer ordinary integration supports coarse synthesis only";
+   if pt7 && native then invalid_arg "Native timing producer requires the qualified immutable Docker runtime";
+   if pt7 && macro then invalid_arg "Linked timing analysis currently supports macro-free coarse synthesis only";
    let bounded = macro || pt7 in
   let identity = get manifest "identity" in ignore (text identity);
   let manifest_sha256 = hash manifest_path in
@@ -109,7 +109,7 @@ let run ~bundle ~support_tools ~pdk_root ~python ~resources ~environment ~runs ~
        let binding = checked (T.of_json (get report "execution_binding")) in
        if pt7 then (match binding with
          | T.Docker d when d.image_id=Hardcaml_asic_flow_domain.Backends.Librelane.Mapping.tested_image_id -> ()
-         | _ -> failwith "PT7 native producer requires the qualified immutable image");
+         | _ -> failwith "Native timing producer requires the qualified immutable image");
       C.set record "execution_binding" (T.to_json binding);
        let project = a.directory ^ "/project" in copy_tree bundle project;
        if qualification then List.iter (fun name -> copy (resources^"/"^name) (project^"/"^name))
@@ -171,7 +171,7 @@ let run ~bundle ~support_tools ~pdk_root ~python ~resources ~environment ~runs ~
            | Process_supervisor.Timed_out -> "timed_out",J.null
            | Process_supervisor.Failed _ -> "failed",J.null in
          C.set record (if qualification then "implementation_process" else "synthesis_process") (obj ["outcome",s outcome;"code",code;
-           "argv",(match get (C.to_json record) "commands" with J.Array [command] -> command | _ -> failwith "PT7 synthesis command association missing");
+           "argv",(match get (C.to_json record) "commands" with J.Array [command] -> command | _ -> failwith "Timing synthesis command association missing");
            "succeeded",J.bool (T.succeeded result)]); save ());
       Option.iter (fun (cleanup : T.cleanup) -> C.set record "container_cleanup" (J.array (List.map (fun (attempt : T.removal) ->
         obj (["status",s (if Process_supervisor.succeeded attempt.result then "removed-or-absent" else "failed")] @

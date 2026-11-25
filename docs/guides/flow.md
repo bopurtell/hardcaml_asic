@@ -8,8 +8,6 @@ after that, for this repository's examples and consumer bundles alike.
 - New to explicit stages? Start with the [stage quickstart](stage-quickstart.md).
   The typed OCaml facade is in [OCaml stage recipes](ocaml-stage-recipes.md).
 - Running a project's named flow/profile? See [named flows](named-flows.md).
-- Earlier dated notes and development-adapter commands are in the
-  [2026-10-15 snapshot](../archive/flow-guide-2026-10-15.md).
 
 The bundle is immutable input. `hardcaml-asic-flow` verifies its file hashes and
 pinned target references, creates a unique directory for each attempt, runs
@@ -31,11 +29,11 @@ LibreLane and collects results. It never installs tools or changes
 | `stages BUNDLE` | Explicit sequential stages with checkpoints and a journal | Yes |
 | `checkpoint-inspect` | Host-only validation of a published checkpoint | No |
 | `observation …` | `describe`, `inspect`, `read-updates` and `watch` on a stage journal | No |
-| `finalize EXECUTION` | Terminal results, and optionally external acceptance, for a six-stage execution | `--accept` only |
+| `finalize EXECUTION` | Terminal results, and optionally external acceptance, for a complete fresh execution | `--accept` only |
 | `finalization-inspect` | Read a finalization receipt | No |
 
 `--help` and `--version` need nothing. `--dependency-lock` and `--waiver` are
-parsed but rejected: dependency identity and waivers belong to ASIC P6.5.
+parsed but rejected: dependency locks and waivers are not implemented.
 
 <a id="default-result-store-and-cli-contract-3"></a>
 ## Default result store and CLI contract 4
@@ -191,9 +189,11 @@ anything:
 ```sh
 scripts/flow.sh                                         # help; nothing runs
 scripts/flow.sh build                                   # dune build && dune runtest
-OUT=/tmp/try KIND=memory scripts/flow.sh emit
-OUT=/tmp/try STAGE=synthesis scripts/flow.sh execute
-OUT=/tmp/try RUN=/tmp/try/runs/<id> scripts/flow.sh report --json
+OUT=$(mktemp -d)
+OUT="$OUT" KIND=memory scripts/flow.sh emit
+OUT="$OUT" STAGE=synthesis scripts/flow.sh execute
+RUN=/absolute/path/printed-by-execute
+OUT="$OUT" RUN="$RUN" scripts/flow.sh report --json
 ```
 
 Every path is an overridable environment variable (`TOOLCHAIN`, `TT`, `PDK`,
@@ -202,7 +202,7 @@ Every path is an overridable environment variable (`TOOLCHAIN`, `TT`, `PDK`,
 `./bootstrap.sh` writes; values already in the environment win. `STAGE` (for
 `run`/`execute`) and `RUN` (for every later operation) are **required**, because
 guessing either is how an expensive run or a misattributed record happens. `$OUT`
-defaults to `../p4-$KIND`, outside this repository. `ALLOW_PYTHON_MISMATCH` is
+must be set explicitly for portable invocation (the script has a checkout-specific default). `ALLOW_PYTHON_MISMATCH` is
 gone, and the driver stops if it is still set. Extra arguments pass straight
 through, for example `scripts/flow.sh archive --output /tmp/evidence`.
 
@@ -338,18 +338,17 @@ or preflight pass. Archives made before complete-input preservation may lack
 The OCaml `Execution_plan` / `Runner` modules run both the coarse Classic
 sequence and explicit stage plans. Preflight binds the runtime once; each stage
 then runs in a fresh owned process and publishes a checkpoint before its
-occurrence can complete. A StagePlan schema 3 has exactly these fields:
+occurrence can complete. A StagePlan schema 4 has exactly these fields:
 
 ```json
-{"schema_version":3,"stages":["synthesis","floorplan","placement","cts","routing","signoff"],"initial_boundary":null}
+{"schema_version":4,"stages":["synthesis","floorplan","placement","cts","routing","timing","signoff"],"initial_boundary":null}
 ```
 
 Fresh sequences start at synthesis; resumed sequences start immediately after
 `initial_boundary`. Empty, repeated, reordered or skipped stages, extra fields and
 duplicate JSON keys are rejected. `--plan FILE`, `--endpoint STAGE` and
 `--methodology-plan FILE` are mutually exclusive. Endpoint shorthand expands to a
-contiguous sequence, and with `--checkpoint` it infers the source. Legacy
-schema-2 endpoint/resume JSON is still readable. OCaml callers use
+contiguous sequence, and with `--checkpoint` it infers the source. Legacy schema-2 endpoint/resume JSON and schema-3 six-stage plans remain readable. OCaml callers use
 [`Flow.Stage` / `Flow.Recipe`](ocaml-stage-recipes.md). Methodology plans come
 from [named flows](named-flows.md) and are fresh-only.
 
@@ -359,12 +358,13 @@ from [named flows](named-flows.md) and are fresh-only.
 | floorplan | `OpenROAD.Floorplan` | `OpenROAD.DumpRCValues` | placement |
 | placement | `OpenROAD.DetailedPlacement` | `OpenROAD.CTS` | cts |
 | cts | `OpenROAD.CTS` | `OpenROAD.STAMidPNR-1` | routing |
-| routing | `OpenROAD.DetailedRouting` | `Odb.RemoveRoutingObstructions` | signoff |
+| routing | `OpenROAD.DetailedRouting` | `Odb.RemoveRoutingObstructions` | timing |
+| timing | `OpenROAD.STAPostPNR` | `OpenROAD.IRDropReport` | signoff |
 | signoff | `Misc.ReportManufacturability` | none | none |
 
 Recipes include every intervening boundary; going straight from synthesis to
 placement is only a standalone segment capability. CTS's later STA/repair belongs
-to routing, and routing's checkers/fill/extraction belong to signoff. Official
+to routing, and routing's checkers/fill/extraction and extracted STA belong to Timing. Official
 Classic gates and successors stay intact. There is no arbitrary DAG,
 custom-step or per-stage-settings API.
 
@@ -379,8 +379,8 @@ Requirements:
   `--checkpoint`.
 - `--timeout` bounds each launch and defaults to 600 seconds, which is too short
   for full signoff; physical evidence used 1,800–7,200 seconds.
-- Native execution, macros, other images and relocated handoffs are not
-  supported.
+- Native execution, other images and relocated handoffs are not supported.
+  Stock SRAM has its own [bounded segmented scope](segmented-sram.md).
 
 ### Checkpoints
 
@@ -439,8 +439,7 @@ diagnostics. In JSON mode the human summary goes to stderr. Unknown units stay
 unknown and invalid counts stay unavailable. Metrics describe the accumulated
 boundary snapshot, not measurements necessarily made in that stage. Named
 executions add a `methodology` section
-([reference](../reference/native-historical-methodology.md)). See also
-[checkpoint reporting](../development/checkpoint-reporting.md).
+([reference](../reference/native-historical-methodology.md)).
 
 When the checkpoint's inventoried `segment.json.run_dir` still has
 `06-yosys-synthesis/reports/stat.json`, the report adds Yosys's cell-type
@@ -701,8 +700,8 @@ errors are `{contract,schema_version,error:{code,detail}}` with exit 2.
 
 ## Segmented terminal results and external acceptance (opt-in)
 
-`finalize` selects the six published checkpoints from one completed **fresh**
-six-stage execution JSON. It validates their identities, full host closure, shared
+`finalize` selects the published checkpoints from one completed **fresh**
+non-macro full execution JSON (seven stages for schema 4, six for historical schema 3). It validates their identities, full host closure, shared
 configuration and exact runtime binding, then rechecks the image-only closure
 with the retained bridge in the bound image. It never calls `Flow.start` or
 repeats implementation. Stitched resumed executions are not eligible.
@@ -725,10 +724,9 @@ it runs the same postcheck and acceptance policy as Classic `postcheck` and
 - the full acceptance policy. Missing or malformed evidence, unconstrained timing
   and failed checks remain failures.
 
-`--replay-trace` is optional for self-contained benches. For the example's replay
-bench, it copies the reference trace (produced by the consumer's
-`acceptance/export_trace.exe`) into the check attempt and passes it as
-`+trace=...`; record that command and hash when producing evidence. No Dune
+`--replay-trace` is optional for self-contained benches. When supplied, it copies
+the caller's reference trace into the check attempt and passes it as
+`+trace=...`; record the trace generation command and hash when producing evidence. No Dune
 command is hidden inside finalization.
 
 ### Separate operation snapshot contract
@@ -765,7 +763,7 @@ stage stream is never reopened. Required receipt fields:
 Optional evidence fields appear as work progresses:
 
 - `execution` (original path, SHA-256 and attempt ID), `binding` and
-  `selected_checkpoints` (six path/identity/boundary references);
+  `selected_checkpoints` (path/identity/boundary references for each selected stage);
 - `runtime_validation: completed`, `selected_evidence`, `mapped_files`
   (bytes/SHA-256 inventory), `adapter` and `evidence_context`;
 - `postcheck_collateral`, `postcheck_record` / `postcheck_sha256`, and
@@ -781,15 +779,14 @@ Metrics come from the cumulative official signoff metrics and the synthesis
 checkpoint, never from inherited counts or a fabricated Yosys report. Every
 public metric or physical check carries `origin_boundary`, and `provenance` names
 the adapter, operation and selected publications. The evaluation context uses the
-new operation ID as its `run_id`, and `full` means the selected six-stage
+new operation ID as its `run_id`, and `full` means the selected full-recipe
 completion. **No synthetic `run.json` or `stat.json` is written.** Results are
 published only after collection and consistency checks; failed acceptance still
 keeps collected evidence and the `acceptance.txt` diagnostics.
 
-For the minimal Workbench terminal integration, consume this operation's exact
+For terminal integration, consume this operation's exact
 `results.path` and verify `results.sha256`; a finalization directory is not a
-`report TARGET` target. The [terminal client contract](../development/workbench-terminal-contract.md)
-describes normalized timing, physical checks, units and declared clock intent.
+`report TARGET` target.
 
 ### Retention
 
@@ -817,14 +814,12 @@ Bundles record `requested_tools.runtime_policy`:
 - **Invalid policy:** malformed or contradictory explicit policy fails closed.
   Installed defaults never override the bundle's request.
 
-**To get new semantics, emit a fresh bundle; never edit an old manifest.** For
-example, from the example checkout:
+**To get new semantics, emit a fresh bundle; never edit an old manifest.** For example, from the provider checkout:
 
 ```sh
-source .dev/asic/current/activate.sh
-BUNDLE="$PWD/.dev/runtime-checks/bundle-NEW"   # must not exist
-dune exec -j 20 asics/fifo_demo/cli/chip.exe -- emit --source-root "$PWD" --output-dir "$BUNDLE"
-hardcaml-asic-flow preflight "$BUNDLE" --toolchain "$PWD/_flow_tools"
+BUNDLE=$(mktemp -d)/bundle
+dune exec examples/tt_bundle_example.exe -- observable "$BUNDLE"
+hardcaml-asic-flow preflight "$BUNDLE" --toolchain "$PWD/.toolchain"
 ```
 
 Preflight keeps the flat `actual` keys and adds a structured `runtime_contract`
@@ -843,9 +838,10 @@ synthesis or physical compatibility.
 
 ## Deprecated Python references
 
-The installed package ships only nine Python modules (`__init__`,
+The installed package ships thirteen private Python runtime modules (`__init__`,
 `backend_protocol`, `librelane_bridge`, `stage_metadata_probe`, `probe`,
-`runtime_observation`, `runtime_contract`, `managed_python`, `paths`) and four
+`runtime_observation`, `runtime_contract`, `managed_python`, `paths`,
+`macro_flow`, `physical_runtime`, `timing_intent_runtime`, `timing_physical_runtime`) and four
 data files. The installed Python planner, runner, checkpoint, observation reader
 (`IncrementalReader`), collector, reporter and archiver APIs, including
 `execution_plan` and `flow_observation`, are retired. This is a **Python API
@@ -856,7 +852,7 @@ Use `hardcaml-asic-flow` or the typed `hardcaml_asic.execution` OCaml library
 (`Execution_plan`, `Runner`, `Checkpoint`, `Observation`/`Observation.Reader` and
 the service modules). The retired sources remain in the checkout as references and
 test oracles, reachable only with `PYTHONPATH=/path/to/checkout/flow`.
-`scripts/phase4.py`, `scripts/report.py` and `scripts/archive.py` run those
+`scripts/coarse_flow_oracle.py`, `scripts/report.py` and `scripts/archive.py` run those
 references. They are **not** the installed implementation, keep historical
 output and option spellings (such as `--allow-python-mismatch`), and should not
 be used for new evidence. `scripts/flow.sh` and `scripts/flow_cli.py` use the
@@ -866,21 +862,9 @@ native CLI.
 
 - **ABC timing print:** the pinned LibreLane ABC renderer passes `cell/pin` where
   ABC expects a cell name, so ABC's printed delay estimate is not timing evidence.
-  It does not affect mapped cell/area evidence or post-route OpenSTA timing
-  (ASIC T.1 tracks the fix).
+  It does not affect mapped cell/area evidence or post-route OpenSTA timing.
 - **Native execution** (`--native`) supports synthesis only.
-- **Not yet available:** dependency locks and waivers (P6.5), source-stamped
+- **Not yet available:** dependency locks and waivers, source-stamped
   `--version` output, store-wide observation and execution recovery.
 - **Physical evidence:** six disconnected pins and one max-fanout violation
   remain visible in raw final metrics, outside the current acceptance gates.
-
-## Evidence
-
-The curated records live under [`evidence/`](../../evidence). The current
-explicit-stage and finalization evidence is listed in the
-[phase plan](../phase_plan.md#explicit-stage-refactor-closeout). The historical
-P4 records are [memory synthesis](../../evidence/p4/memory-synthesis/README.md)
-(P4.4) and [observable physical](../../evidence/p4/observable-physical/README.md)
-(P4.5); see the [original P4 gates](../archive/phase-plan-through-p6.4b.md#7-p4--execution-results-and-physical-integration).
-The P4.5 run used this repository's own example. It proves the physical path,
-but it is not consumer-adoption evidence.

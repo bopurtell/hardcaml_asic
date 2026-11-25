@@ -199,7 +199,7 @@ let expected_outputs = [ "uo_out", 8; "uio_out", 8; "uio_oe", 8 ]
    declares "rst_n" as an output, so the input check reports it as the wrong direction
    AND the output check reports it as unexpected. That is noise, not a missed error.
 
-   TODO (future fix): these messages do not follow docs/development/comment_guidelines.md section 9,
+   TODO (future fix): these messages do not follow the structured diagnostic convention,
    which wants "what went wrong; how to fix it". Something like "TT top-level port has
    the wrong width; match the TT user module template". Changing them changes the
    fragments test/test_resolved_flow.ml looks for, so update those in the same commit;

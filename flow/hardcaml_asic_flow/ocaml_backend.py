@@ -92,7 +92,7 @@ def run_command(args):
 
 def run(args):
     """Typed callback for the retained Python execute runner; no fallback."""
-    from .phase4 import RunOutcome, FlowInterrupted
+    from .coarse_flow_oracle import RunOutcome, FlowInterrupted
     process = subprocess.Popen(run_command(args), stdout=subprocess.PIPE, text=True)
     previous = {}
     try:
@@ -128,7 +128,7 @@ def postcheck_command(args):
 
 def postcheck(args):
     """Native provider callback retaining Python CheckOutcome and signal delivery."""
-    from .phase4 import CheckOutcome, FlowInterrupted
+    from .coarse_flow_oracle import CheckOutcome, FlowInterrupted
     process = subprocess.Popen(postcheck_command(args), stdout=subprocess.PIPE, text=True)
     previous = {}
     try:

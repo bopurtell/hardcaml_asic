@@ -52,7 +52,7 @@ let write p raw=let oc=open_out_bin p in Fun.protect ~finally:(fun () -> close_o
 let read p=let ic=open_in_bin p in Fun.protect ~finally:(fun () -> close_in_noerr ic)
   (fun () -> really_input_string ic (in_channel_length ic))
 let with_files files f=
-  let dir=Filename.temp_file "pt7c-native-" "" in Sys.remove dir;Unix.mkdir dir 0o700;
+  let dir=Filename.temp_file "native-timing-" "" in Sys.remove dir;Unix.mkdir dir 0o700;
   Fun.protect ~finally:(fun () -> Array.iter (fun p -> Sys.remove (Filename.concat dir p)) (Sys.readdir dir);Unix.rmdir dir)
     (fun () -> List.iter (fun (p,raw) -> write (Filename.concat dir p) raw) files;f dir)
 let event kind fields=obj (["schema_version",`Int 1;"event",s kind]@fields)
@@ -311,5 +311,5 @@ let run ()=
   let audit_json=set audit_json "sources" (arr (List.filter (fun source -> get source "role"<>s "native_checks") sources)) in
   with_files (("audit.json",json audit_json)::List.remove_assoc "audit.json" files) (fun directory ->
     bad_text "missing native report" "native_checks" (Timing_intent_evidence.inspect ~directory ()));
-  Printf.printf "PT7c native coverage: %d pure checks passed (no EDA)\n" !tests
+  Printf.printf "Native timing coverage: %d pure checks passed (no EDA)\n" !tests
 let ()=if Array.length Sys.argv=2 && Sys.argv.(1)="--producer" then print_string (Producer.render ()) else run ()

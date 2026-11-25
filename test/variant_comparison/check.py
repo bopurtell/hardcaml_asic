@@ -54,7 +54,7 @@ def main():
             return result.stderr
         return json.loads(result.stdout)
 
-    with tempfile.TemporaryDirectory(prefix='pt8-comparison-') as tmp:
+    with tempfile.TemporaryDirectory(prefix='comparison-') as tmp:
         capability = call([cli, '--version', '--json'])['cli_contract']['capabilities']['variant_comparison1']
         assert capability['read_only'] and capability['schema_version'] == 1
         assert capability['max_response_bytes'] == 1024 * 1024

@@ -123,7 +123,7 @@ The workflow descriptor now writes schema 2, with actual phase order
 `circuit → snapshot → source_after`. Readers also accept the **exact original
 schema-1 descriptor**, retaining its historically reversed advertised order
 without rewriting it. Other versions or descriptor variants are rejected.
-The outer operation record and inspection envelope remain schema 1; A's payload
+The outer operation record and inspection envelope remain schema 1; the preparation payload
 and preparation identities are unchanged by this descriptor correction.
 `operation.json` is published before invoking project code. On success,
 `resources.json` is written and checked before the completed operation record
@@ -180,8 +180,7 @@ files, tool readiness, synthesis retention or physical acceptance.
 From the ASIC checkout:
 
 ```sh
-flock /tmp/opencode/asic-preparation-build.lock \
-  opam exec --switch=5.2.0+ox -- dune build -j6 @test/preparation
+opam exec --switch=5.2.0+ox -- dune build @test/preparation
 ```
 
 This exercises the actual typed consumer and public CLI helper, durable failures,

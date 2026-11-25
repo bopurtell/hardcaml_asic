@@ -11,7 +11,7 @@ There are two entry points to the same provisioner:
 
 - **`hardcaml-asic-flow provision`** is installed with the package and needs no
   source checkout. Consumers use it, often through a thin `./bootstrap.sh` of
-  their own, as the example does.
+  their own.
 - **`./bootstrap.sh` in this repository** also checks the OCaml development layer
   and defaults to `.toolchain/`.
 
@@ -36,13 +36,15 @@ If the opam switch is missing packages, `./bootstrap.sh` stops and prints the
 `opam install` line rather than changing a switch shared with your other
 checkouts. `./bootstrap.sh --install-deps` opts in to that change.
 
+The default non-macro coarse runtime probe requests a 20-CPU quota from Docker.
+A daemon exposing fewer CPUs rejects it even when the image and PDK pins match.
+Use a host/daemon with sufficient CPUs for coarse execution; provisioning alone
+is not a runtime-readiness verdict for a bundle.
+
 ## Tool-directory ownership
 
 The tool root is any directory you choose: `--toolchain PATH`, or
-`TOOLCHAIN=PATH`. This repository defaults to `.toolchain/`. The example selects
-`--toolchain` > `TOOLCHAIN` > its absolute, gitignored `_flow_tools/`. Its
-bootstrap uses the installed provider's pins, with no copied pins, no source
-fallback and no automatic provider refresh.
+`TOOLCHAIN=PATH`. This repository defaults to `.toolchain/`. Consumers can choose an absolute, gitignored tool root. Their bootstrap should use the installed provider's pins, with no copied pins, no source fallback or automatic provider refresh.
 
 | Storage | Owner / configuration |
 | --- | --- |
@@ -59,15 +61,13 @@ of the other rows. A tool root may be shared by several consumers.
 
 ### Consumer check
 
-From `hardcaml_asic_example`, in your own shell:
+From any directory with the installed provider on `PATH`:
 
 ```sh
-source .dev/asic/current/activate.sh
-./bootstrap.sh --check
+hardcaml-asic-flow provision --toolchain "$TOOLCHAIN" --check
 ```
 
-Activation selects the installed library/CLI generation; it neither refreshes the
-provider nor provisions tools. The check applies role-specific runtime policy
+The check applies role-specific runtime policy
 (host Python 3.11; official image with Python 3.10–3.14). `--no-container` skips
 all engine and image queries and does not certify native EDA tools. To validate a
 specific bundle, use [preflight](flow.md#runtime-policy-and-launch-binding).
@@ -215,8 +215,7 @@ restart.
 The bundle requests the minor version in `toolchain.lock`, and both provisioning
 and preflight reject a mismatch. Normal provisioning acquires the managed base
 when needed; `--python BASE` selects an external one. Nothing waives a mismatch:
-the installed command has no `--allow-python-mismatch`, and recorded waivers are
-ASIC P6.5 work. Acquiring a new base does not change an existing venv. A
+the installed command has no `--allow-python-mismatch`, and recorded waivers are not implemented. Acquiring a new base does not change an existing venv. A
 mismatched venv needs explicit repair.
 
 ### `<checkout> is at <hash>, not <hash>, and is dirty`
@@ -319,4 +318,4 @@ To change a pin:
   along with the command that fixes each.
 - It does not change the opam switch unless you pass `--install-deps`.
 - Native EDA capability checks and Podman runner generalization are not
-  implemented (part of ASIC P6.5c).
+  implemented.

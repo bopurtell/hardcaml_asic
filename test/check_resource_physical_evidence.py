@@ -1,4 +1,4 @@
-"""PT5b physical/schema/replay integration. Rebound fixtures are not EDA proof."""
+"""Resource physical/schema/replay integration. Rebound fixtures are not EDA proof."""
 import argparse
 import copy
 import hashlib
@@ -140,7 +140,7 @@ def main():
         assert p.returncode == 0, (op, p.stdout, p.stderr)
         return json.loads(p.stdout)
 
-    with tempfile.TemporaryDirectory(prefix='pt5b-physical-') as tmp:
+    with tempfile.TemporaryDirectory(prefix='resource-physical-') as tmp:
         root = Path(tmp)
         flow, rebind = physical_fixture(root)
         baseline = {p: p.read_bytes() for p in root.rglob('*') if p.is_file()}
@@ -360,7 +360,7 @@ def main():
         assert 'source-aware' in consume('verify', root)
 
     # Schema-1 synthesis assertions replay with schema-1 semantics, not schema 2.
-    with tempfile.TemporaryDirectory(prefix='pt5b-schema1-') as tmp:
+    with tempfile.TemporaryDirectory(prefix='resource-schema1-') as tmp:
         root = Path(tmp)
         fixture(root)
         old = invoke(root)
@@ -374,7 +374,7 @@ def main():
         old['observations'][0]['resources'][0]['geometry'] = dict(status='unavailable',reason='forged extension')
         write(root/'assertion.json', old)
         assert consume('validate', root/'assertion.json') != 'valid'
-    print(f'PT5b physical: {checks} CLI observations; semantic rebound negatives, strict schema and recorded-schema replay passed')
+    print(f'Resource physical evidence: {checks} CLI observations; semantic rebound negatives, strict schema and recorded-schema replay passed')
 
 
 if __name__ == '__main__':

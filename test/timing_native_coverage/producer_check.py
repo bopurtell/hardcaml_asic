@@ -33,7 +33,7 @@ proc check_setup {args} {
 source [lindex $argv 0]
 ::hc_pt7_native::write [lindex $argv 1]
 '''
-with tempfile.TemporaryDirectory(prefix="pt7c-tcl-") as root:
+with tempfile.TemporaryDirectory(prefix="native-timing-tcl-") as root:
     root = Path(root)
     (root / "producer.tcl").write_text(producer)
     (root / "model.tcl").write_text(model)
@@ -73,4 +73,4 @@ with tempfile.TemporaryDirectory(prefix="pt7c-tcl-") as root:
         assert failure.returncode != 0, (label, failure)
         assert "HC_ASIC_NATIVE_V2_COMPLETE" not in failure.stdout
         assert not (failed_out / "native-data.json").exists()
-print("PT7c actual producer Tcl API-model checks passed (no EDA)")
+print("Native timing producer Tcl API-model checks passed (no EDA)")

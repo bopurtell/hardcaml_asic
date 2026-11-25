@@ -14,8 +14,8 @@ from unittest import mock
 
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "flow"))
-from hardcaml_asic_flow import cli, execution_plan as plans, phase4, runner
-import test_phase4
+from hardcaml_asic_flow import cli, execution_plan as plans, coarse_flow_oracle, runner
+import test_coarse_flow
 from test_flow_cli import FakeOperations
 
 
@@ -87,9 +87,9 @@ class RunnerTest(unittest.TestCase):
         self.assertEqual((result.status, result.exit_code), ("failed", 1))
 
     def test_failure_and_signal_do_not_get_promoted_by_collection(self):
-        for failure in (ValueError("check broke"), phase4.FlowInterrupted(signal.SIGTERM),
+        for failure in (ValueError("check broke"), coarse_flow_oracle.FlowInterrupted(signal.SIGTERM),
                         KeyboardInterrupt()):
-            for collect in (0, 7, OSError("collection broke"), phase4.FlowInterrupted(signal.SIGINT)):
+            for collect in (0, 7, OSError("collection broke"), coarse_flow_oracle.FlowInterrupted(signal.SIGINT)):
                 with self.subTest(failure=failure, collect=collect):
                     self.operations = FakeOperations()
                     self.operations.postcheck = mock.Mock(side_effect=failure)
@@ -139,12 +139,12 @@ class ServiceIntegrationTest(unittest.TestCase):
         # Explicit injected retained-service fixture. Production Operations.run
         # is now authoritative OCaml and is exercised in check_coarse_run.py.
         def run(self, args):
-            return phase4.run(args)
+            return coarse_flow_oracle.run(args)
 
     def setUp(self):
         # Reuse the existing emitted-bundle/runtime fixture, not another service
         # implementation. Only the external probe/process boundaries are replaced.
-        self.fixture = test_phase4.RunnerTest()
+        self.fixture = test_coarse_flow.RunnerTest()
         self.fixture.setUp()
         self.addCleanup(self.fixture.doCleanups)
         self.args = self.fixture.args
@@ -157,22 +157,22 @@ class ServiceIntegrationTest(unittest.TestCase):
                     signal.raise_signal(signal.SIGTERM)
                 return {"ready": False, "issues": ["fixture unavailable"]}
             with self.subTest(interrupted=interrupted), \
-                    mock.patch.object(phase4, "preflight", side_effect=probe), \
-                    mock.patch.object(phase4, "run_logged") as backend, \
+                    mock.patch.object(coarse_flow_oracle, "preflight", side_effect=probe), \
+                    mock.patch.object(coarse_flow_oracle, "run_logged") as backend, \
                     mock.patch.object(cli.reporter, "report") as acceptance:
                 result = runner.execute(plans.resolve("synthesis"),
                                         runner.ServiceAdapter(self.args, self.PythonOperations()))
                 self.assertEqual(result.exit_code, 143 if interrupted else 1)
                 run = result.run_outcome.run_dir
                 self.assertTrue((run / "results.json").is_file())
-                self.assertEqual(phase4.read_json(run / "run.json")["status"], result.status)
-                self.assertEqual(phase4.read_json(run / "results.json")["run_id"], result.run_outcome.run_id)
+                self.assertEqual(coarse_flow_oracle.read_json(run / "run.json")["status"], result.status)
+                self.assertEqual(coarse_flow_oracle.read_json(run / "results.json")["run_id"], result.run_outcome.run_id)
                 backend.assert_not_called()
                 acceptance.assert_not_called()
 
     def test_successful_process_does_not_bypass_real_acceptance(self):
-        with mock.patch.object(phase4, "preflight", return_value=self.fixture.ready()), \
-                mock.patch.object(phase4, "run_logged", return_value=0):
+        with mock.patch.object(coarse_flow_oracle, "preflight", return_value=self.fixture.ready()), \
+                mock.patch.object(coarse_flow_oracle, "run_logged", return_value=0):
             result = runner.execute(plans.resolve("synthesis"),
                                     runner.ServiceAdapter(self.args, self.PythonOperations()))
         # The fixture produces no synthesis artifacts. Existing reporter policy

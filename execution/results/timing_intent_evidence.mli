@@ -7,7 +7,7 @@
     cross-links (including RTL source roles, runtime policy and floorplan reference),
     not re-resolution of the project or target/base-clock-policy compatibility.
     Hashes the entire
-    SDC against its identity-bound file entry; PT7 Tcl suffix replay is additional,
+    SDC against its identity-bound file entry; Timing intent Tcl suffix replay is additional,
     not reconstruction of the whole base-SDC policy. Log processing retains only
     bounded receipt/wire state (65,536 lines, 64 KiB/line, 1,028 events/2 MiB wire).
 
@@ -26,8 +26,7 @@
      annotation/clock evidence. Coarse provenance and timing/electrical verdicts
      belong to Timing_intent_flow, not this inner native-scope audit reader.
 
-    Producer contracts are [docs/development/pt7-evidence-handoff.md] and
-    [docs/development/pt7c-native-handoff.md]. Sources
+    The schema-specific producer contracts are enforced by this reader. Sources
     must not be mutated concurrently with inspection. Receipts are source-replayed
     producer assertions, not authenticated execution attestations. *)
 val inspect : directory:string -> unit -> (Evidence_json.t, string) result

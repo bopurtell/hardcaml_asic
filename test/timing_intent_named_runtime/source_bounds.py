@@ -6,7 +6,7 @@ import sys
 import tempfile
 
 consumer = Path(sys.argv[1]).resolve()
-with tempfile.TemporaryDirectory(prefix="pt7-named-outer-bounds-", dir="/tmp/opencode") as tmp:
+with tempfile.TemporaryDirectory(prefix="named-timing-outer-bounds-", dir="/tmp/opencode") as tmp:
     root = Path(tmp)
     paths = []
     for i in range(4097):

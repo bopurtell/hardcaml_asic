@@ -14,7 +14,7 @@ import uuid
 from types import SimpleNamespace
 
 from . import backend_protocol as protocol, checkpoint, execution_plan, execution_transport as transport
-from . import phase4, report, result_store
+from . import coarse_flow_oracle, report, result_store
 from .flow_observation import strict_read
 
 CONTRACT = "hardcaml-asic.segment-finalization"
@@ -119,14 +119,14 @@ def runtime_validate(compatibility, publications, directory, receipt):
                "bridge_sha256": compatibility["bridge_sha256"]}
     request_path = directory / "runtime-validation-request.json"
     protocol.validate_request(request)
-    phase4.save(request_path, request)
+    coarse_flow_oracle.save(request_path, request)
     name = transport.owned_name()
     argv = transport.docker_command(binding, project.parent, pdk, name=name,
                                    workdir=project, pdk=compatibility["target"]["technology"])
     image_index = argv.index(binding["image_identity"]["image_id"])
     argv[image_index:image_index] = ["-v", f"{directory}:{directory}"]
     argv += [*binding["interpreter_flags"], str(bridge), str(request_path)]
-    if phase4.run_logged(argv, project, transport.environment(), directory / "runtime-validation.log",
+    if coarse_flow_oracle.run_logged(argv, project, transport.environment(), directory / "runtime-validation.log",
                          receipt, directory / "operation.json", timeout=120,
                          cleanup=lambda: transport.cleanup(binding, name)):
         raise ValueError("bound runtime closure validation failed")
@@ -136,7 +136,7 @@ def runtime_validate(compatibility, publications, directory, receipt):
 def adapt(directory, compatibility, publications, receipt):
     """Copy selected evidence and explicitly derive CSV from official metrics."""
     project = Path(compatibility["project"])
-    manifest = phase4.read_json(project / "manifest.json")
+    manifest = coarse_flow_oracle.read_json(project / "manifest.json")
     if manifest["identity"] != compatibility["bundle_identity"]:
         raise ValueError("retained project manifest identity mismatch")
     target = directory / "project"
@@ -153,7 +153,7 @@ def adapt(directory, compatibility, publications, receipt):
     shutil.copy2(publications[0][0] / "state.json", synth)
     final_state = flow / "signoff-state.json"
     shutil.copy2(publications[-1][0] / "state.json", final_state)
-    state = phase4.read_json(final_state)
+    state = coarse_flow_oracle.read_json(final_state)
     final = flow / "final"
     final.mkdir()
     shutil.copy2(project / "info.yaml", final / "info.yaml")
@@ -194,19 +194,19 @@ def finalize(*, execution, store, accept=False, support_tools=None, precheck_pyt
     directory = allocation.directory.resolve()
     path_value = lambda path: str(path) if path is not None else None
     receipt = {"contract": CONTRACT, "schema_version": 1, "attempt_id": allocation.identity,
-               "status": "running", "phase": "validation", "started_at": phase4.now(),
+               "status": "running", "phase": "validation", "started_at": coarse_flow_oracle.now(),
                "ended_at": None, "acceptance": "not_evaluated", "external_postcheck": "not_evaluated",
                "request": {"execution": str(Path(execution).absolute()), "accept": accept,
                            "support_tools": path_value(support_tools), "precheck_python": path_value(precheck_python),
                            "testbench": path_value(testbench), "testbench_top": testbench_top,
                            "replay_trace": path_value(replay_trace)},
                "commands": [], "results": None, "error": None}
-    save = lambda: phase4.save(directory / "operation.json", receipt)
+    save = lambda: coarse_flow_oracle.save(directory / "operation.json", receipt)
     save()
     try:
         if allocated is not None:
             allocated(directory, receipt["attempt_id"])
-        with phase4.interruption_handlers():
+        with coarse_flow_oracle.interruption_handlers():
             value, compatibility, publications = selected(Path(execution))
             receipt["execution"] = {"path": str(Path(execution).resolve()),
                                     "sha256": checkpoint.digest(execution), "attempt_id": value["attempt_id"]}
@@ -233,7 +233,7 @@ def finalize(*, execution, store, accept=False, support_tools=None, precheck_pyt
                 receipt["phase"] = "external_postcheck"
                 receipt["external_postcheck"] = "running"
                 save()
-                outcome = phase4.check(SimpleNamespace(run_dir=directory,
+                outcome = coarse_flow_oracle.check(SimpleNamespace(run_dir=directory,
                     support_tools=Path(support_tools).resolve(), precheck_python=Path(precheck_python).absolute(),
                     testbench=Path(testbench).resolve(), testbench_top=testbench_top,
                     pdk_root=Path(compatibility["pdk_root"])), context=context, replay_trace=replay_trace)
@@ -254,12 +254,12 @@ def finalize(*, execution, store, accept=False, support_tools=None, precheck_pyt
             for path, expected in receipt.get("postcheck_collateral", {}).items():
                 if checkpoint.file_record(path) != expected:
                     raise ValueError("postcheck collateral changed during finalization")
-            results = phase4.collect(directory, context=context, synthesis_state=synth)
+            results = coarse_flow_oracle.collect(directory, context=context, synthesis_state=synth)
             results["provenance"] = {"contract": CONTRACT, "operation": str(directory / "operation.json"),
                                      "selected_evidence": receipt["selected_evidence"], "adapter": receipt["adapter"]}
             for item in list(results["metrics"].values()) + list(results["synthesis_checks"].values()) + list(results["checks"].values()):
                 item["origin_boundary"] = "synthesis" if item["stage"] == "Yosys.Synthesis" else "signoff"
-            phase4.save(directory / "results.json", results)
+            coarse_flow_oracle.save(directory / "results.json", results)
             receipt["results"] = {"path": str(directory / "results.json"),
                                   "sha256": checkpoint.digest(directory / "results.json")}
             code = 0
@@ -285,7 +285,7 @@ def finalize(*, execution, store, accept=False, support_tools=None, precheck_pyt
         if receipt["external_postcheck"] == "running":
             receipt["external_postcheck"] = "failed"
         receipt["error"] = str(exc)
-    receipt["ended_at"] = phase4.now()
+    receipt["ended_at"] = coarse_flow_oracle.now()
     receipt["exit_code"] = code
     save()
     return directory, receipt

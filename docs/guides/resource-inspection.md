@@ -72,10 +72,6 @@ revalidates the exact source on page requests. The digest identifies source evid
 cache consumers must also bind provider identity and normalized projection contents.
 
 The actual augmented SRAM capture produces one `program` row, 76 authorized sources,
-186 sampled timing paths and 372 electrical observations. Original physical-p4 lacks
+186 sampled timing paths and 372 electrical observations. The original physical snapshot lacks
 raw STA reports and stays timing-unavailable. Electrical compliance is not assessed;
-geometry, sampled coverage and area-scope qualifications remain those of PT.5b.
-
-Workbench consumes this interface through its [Resources inspector](../../../silver/docs/resource_inspector.md).
-Real native acceptance and exact provider identities are recorded in the
-[integration evidence](../../../silver/docs/resource_inspector_acceptance.md).
+geometry, sampled coverage and area-scope qualifications are described in [resource realization](resource-realization.md).

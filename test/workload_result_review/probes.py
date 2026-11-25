@@ -109,7 +109,7 @@ def main():
 
     v = json.loads(subprocess.check_output([str(api), 'variant', '256'], env=env))
     v128 = json.loads(subprocess.check_output([str(api), 'variant', '128'], env=env))
-    with tempfile.TemporaryDirectory(prefix='pt8-a-independent-') as tmp:
+    with tempfile.TemporaryDirectory(prefix='workload-result-review-') as tmp:
         root = Path(tmp)
         manifest, sim, result, rows = fixture(root, v)
         path = root / 'result.json'

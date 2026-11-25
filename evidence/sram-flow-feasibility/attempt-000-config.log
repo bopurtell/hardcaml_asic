@@ -1,4 +1,0 @@
-[19:15:28] WARNING  DISPLAY environment variable not set. GUI    container.py:53
-                    features will not be available.                             
-[19:15:28] INFO     Running containerized command:              container.py:285
-cannot attach stdin to a TTY-enabled container because stdin is not a terminal

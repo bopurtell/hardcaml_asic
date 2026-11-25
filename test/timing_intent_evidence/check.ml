@@ -76,7 +76,7 @@ let fixture ?(intent=intent) ?(events=events) ?(completion=true) ?(prefix="") ?r
     "scope",s "standalone_synthesized_netlist_sta"]@context@["sources",arr (List.map source files)]) in
   ("audit.json",json audit)::List.map (fun (role,raw) -> role^".txt",raw) files
 let with_fixture files f =
-  let root=Filename.temp_file "pt7-evidence-" "" in
+  let root=Filename.temp_file "timing-evidence-" "" in
   Sys.remove root;Unix.mkdir root 0o700;
   Fun.protect ~finally:(fun () -> Array.iter (fun p -> Sys.remove (Filename.concat root p)) (Sys.readdir root);Unix.rmdir root)
     (fun () -> List.iter (fun (path,raw) -> write (Filename.concat root path) raw) files;f root)
@@ -192,4 +192,4 @@ let () =
   negative "wrong counts" ~files:(fixture ~events:(map_event "validated" (fun e -> set e "stage_count" (`Int 3))) ()) (fun _ -> ());
   negative "downstream capture declaration" ~files:(fixture ~intent:(set intent "exceptions" (arr [set ex "targets" (arr [s "rx1"])])) ()) (fun _ -> ());
   negative "blank reason" ~files:(fixture ~intent:(set intent "exceptions" (arr [set ex "reason" (s " ")])) ()) (fun _ -> ());
-  Printf.printf "PT7 timing evidence: %d positive/negative checks (real bundle envelope; synthetic STA; no EDA).\n" !checks
+  Printf.printf "Timing intent evidence: %d positive/negative checks (real bundle envelope; synthetic STA; no EDA).\n" !checks

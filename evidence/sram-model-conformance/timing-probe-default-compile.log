@@ -1,2 +1,0 @@
-working_directory=/home/wayne/devel/jane/hardcaml_asic
-command=iverilog -g2012 -Wall -s timing_support_tb -o evidence/sram-model-conformance/timing-probe-default.vvp /home/wayne/devel/jane/hardcaml_asic/experiments/sram_model_conformance/timing_support_tb.sv 

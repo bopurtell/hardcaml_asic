@@ -1,12 +1,12 @@
 module E = Evidence_json
 let get j k = match j with `Assoc xs -> Option.value (List.assoc_opt k xs) ~default:`Null | _ -> `Null
-let text = function `String s when s<>"" -> s | _ -> invalid_arg "PT7 flow: nonempty string required"
-let list = function `List xs -> xs | _ -> invalid_arg "PT7 flow: array required"
-let require b s = if not b then invalid_arg ("PT7 flow: "^s)
+let text = function `String s when s<>"" -> s | _ -> invalid_arg "Linked timing flow: nonempty string required"
+let list = function `List xs -> xs | _ -> invalid_arg "Linked timing flow: array required"
+let require b s = if not b then invalid_arg ("Linked timing flow: "^s)
 let exact j keys = match j with
   | `Assoc xs when List.sort String.compare (List.map fst xs)=List.sort String.compare keys -> ()
-  | _ -> invalid_arg "PT7 flow: unexpected receipt fields"
-let nonnegative = function `Int n when n>=0 -> n | _ -> invalid_arg "PT7 flow: nonnegative integer required"
+  | _ -> invalid_arg "Linked timing flow: unexpected receipt fields"
+let nonnegative = function `Int n when n>=0 -> n | _ -> invalid_arg "Linked timing flow: nonnegative integer required"
 let historical_path j =
   let p=text j in
   require (not (Filename.is_relative p)) "absolute historical path required";
@@ -29,7 +29,7 @@ let tcl_paths raw =
     | 'n' -> add b '\n' | 'r' -> add b '\r' | 't' -> add b '\t'
     | 'v' -> add b '\011' | 'f' -> add b '\012'
     | '\\'|'"'|'{'|'}'|'['|']'|'$'|';'|' ' -> add b c
-    | _ -> invalid_arg "PT7 flow: unsupported native Liberty list escape" in
+    | _ -> invalid_arg "Linked timing flow: unsupported native Liberty list escape" in
   let word () =
     let b=Buffer.create 128 in
     (match peek () with
@@ -56,7 +56,7 @@ let tcl_paths raw =
        while !pos<length && not (space raw.[!pos]) do
          if raw.[!pos]='\\' then escape b else (add b raw.[!pos];incr pos)
        done
-     | None -> invalid_arg "PT7 flow: missing Liberty list word");
+     | None -> invalid_arg "Linked timing flow: missing Liberty list word");
     require (!pos=length || space raw.[!pos]) "compound native Liberty list word";
     Buffer.contents b in
   let rec loop count acc = skip ();if !pos=length then List.rev acc else (
@@ -112,7 +112,7 @@ let check_ref = check_with_hash hash
 let protect f = try Ok (f ()) with
   | Invalid_argument s | Failure s | Sys_error s -> Error s
   | Unix.Unix_error (e,f,p) -> Error (f^" "^p^": "^Unix.error_message e)
-  | End_of_file -> Error "PT7 flow: truncated source"
+  | End_of_file -> Error "Linked timing flow: truncated source"
   | Yojson.Json_error s -> Error s
 let manifest ~root context =
   let p=member root "project/manifest.json" in
@@ -133,7 +133,7 @@ let inventory root =
       require (bytes<=64*1024*1024) "source exceeds 64MiB";
       total:= !total+bytes; require (!total<=512*1024*1024) "source bytes exceed 512MiB";
       if relative="timing-intent/analysis.json" then [] else [ref_ root relative]
-    | _ -> invalid_arg "PT7 flow: linked/special analysis member" in
+    | _ -> invalid_arg "Linked timing flow: linked/special analysis member" in
   walk "timing-intent"
 let publish ~run_dir ~context ~succeeded () =
   let root=Unix.realpath run_dir in
@@ -179,7 +179,7 @@ let inspect_impl ?named ~run_dir ~context () =
     "sources",`List []])
   else (
     (match Hardcaml_asic.Elaboration.Bundle.verify_manifest_identity m with
-     | Ok () -> () | Error _ -> invalid_arg "PT7 flow: invalid bundle identity");
+     | Ok () -> () | Error _ -> invalid_arg "Linked timing flow: invalid bundle identity");
     let native_contract=get m "timing_native_coverage" in
     exact native_contract ["contract";"schema";"profile";"producer"];
     require (get native_contract "contract"=`String "hardcaml-asic.timing-native-coverage" &&
@@ -223,11 +223,11 @@ let inspect_impl ?named ~run_dir ~context () =
       get synthesis_process "outcome"=`String "exited" && get synthesis_process "code"=`Int 0 &&
       get synthesis_process "succeeded"=`Bool true) "synthesis process did not complete before linked analysis");
     let binding=match Identity_json.parse (Yojson.Safe.to_string (get request "binding")) with
-      | Error _ -> invalid_arg "PT7 flow: invalid runtime identity JSON"
+      | Error _ -> invalid_arg "Linked timing flow: invalid runtime identity JSON"
       | Ok j -> (match Execution_transport.of_json j with Ok b -> b | Error e -> invalid_arg e) in
     (match binding with Execution_transport.Docker d when
       d.image_id=Hardcaml_asic_flow_domain.Backends.Librelane.Mapping.tested_image_id -> ()
-      | _ -> invalid_arg "PT7 flow: unsupported runtime/image binding");
+      | _ -> invalid_arg "Linked timing flow: unsupported runtime/image binding");
     let check_docker_argv ~analysis argv =
       let args=List.map text (list argv) in
       match binding,args with
@@ -244,7 +244,7 @@ let inspect_impl ?named ~run_dir ~context () =
             "--jobs";"6";"-c";"OPENROAD_THREADS=6";"-c";"STA_THREADS=1";
             "-c";"KLAYOUT_DRC_THREADS=6";"-c";"KLAYOUT_XOR_THREADS=6";"src/config.json"] in
         require (args=prefix@flags@payload) "transport argv differs from qualified image/resources/executed source paths";args
-      | _ -> invalid_arg "PT7 flow: unexpected transport executable/operation" in
+      | _ -> invalid_arg "Linked timing flow: unexpected transport executable/operation" in
     (match named with Some _ -> () | None ->
       ignore (check_docker_argv ~analysis:false (get synthesis_process "argv"));
       require (get context "commands"=`List [get synthesis_process "argv"]) "synthesis command/process association differs");
@@ -262,15 +262,15 @@ let inspect_impl ?named ~run_dir ~context () =
     let failed=get a "status"=`String "failed" in
     require (failed || get a "status"=`String "completed") "invalid companion status";
     exact result ["request_sha256";"succeeded";"outcome";"code";"cleanup_error"];
-    let succeeded=match get result "succeeded" with `Bool b -> b | _ -> invalid_arg "PT7 flow: invalid transport success Boolean" in
+    let succeeded=match get result "succeeded" with `Bool b -> b | _ -> invalid_arg "Linked timing flow: invalid transport success Boolean" in
     let cleanup_ok=match get result "cleanup_error" with `Null -> true | `String s when s<>"" && not (String.contains s '\000') -> false
-      | _ -> invalid_arg "PT7 flow: invalid transport cleanup status" in
+      | _ -> invalid_arg "Linked timing flow: invalid transport cleanup status" in
     let exited_zero=match get result "outcome",get result "code" with
       | `String "exited",`Int n when n>=0 && n<=255 -> n=0
       | `String "signaled",`Int n when n>0 && n<128 -> false
       | `String "cancelled",`Int (2|15) -> false
       | `String ("timed_out"|"failed"),`Null -> false
-      | _ -> invalid_arg "PT7 flow: invalid transport outcome/code" in
+      | _ -> invalid_arg "Linked timing flow: invalid transport outcome/code" in
     let transport_ok=exited_zero && cleanup_ok in
     require (succeeded=transport_ok) "transport success contradicts process/cleanup status";
     require (failed || transport_ok) "hook completion without successful enclosing process";
@@ -311,7 +311,7 @@ let inspect_impl ?named ~run_dir ~context () =
       (match delta with `Assoc xs -> require
         (List.sort String.compare (List.map fst xs)=List.sort String.compare
           ["STA_CORNERS";"STA_THREADS";"OPENROAD_THREADS";"STA_EXTRA_CORNER_TCL_FILE"])
-        "unexpected analysis delta keys" | _ -> invalid_arg "PT7 flow: malformed analysis delta");
+        "unexpected analysis delta keys" | _ -> invalid_arg "Linked timing flow: malformed analysis delta");
       List.iter (fun k -> let d=get delta k in
         require (equal (get d "requested") (get resolved k) && equal (get d "effective") (get effective k))
           ("analysis delta receipt mismatch: "^k))
@@ -319,7 +319,7 @@ let inspect_impl ?named ~run_dir ~context () =
       (match effective with `Assoc fields -> List.iter (fun (k,v) ->
         if not (List.mem k ["meta";"STA_CORNERS";"STA_THREADS";"OPENROAD_THREADS";"STA_EXTRA_CORNER_TCL_FILE"])
         then require (equal (get resolved k) v) ("unexpected effective configuration delta: "^k)) fields
-        | _ -> invalid_arg "PT7 flow: malformed effective configuration");
+        | _ -> invalid_arg "Linked timing flow: malformed effective configuration");
       require (get effective "OPENROAD_THREADS"=`Int 1 && get effective "PNR_SDC_FILE"=get resolved "PNR_SDC_FILE") "invalid analysis thread/SDC delta";
       let corner=text (get resolved "DEFAULT_CORNER") in
       require (get h "requested_corners"=`List [`String corner] && get h "executed_corners"=`List [`String corner]) "requested/executed corners mismatch";
@@ -330,7 +330,7 @@ let inspect_impl ?named ~run_dir ~context () =
         require (get audit "corner"=`String corner) "wrong actual corner";
         let path=bound (get audit "audit") in
         let directory=Filename.dirname (member root path) in
-        let view=match Timing_intent_evidence.inspect ~directory () with Ok v -> v | Error e -> invalid_arg ("PT7 flow audit: "^e) in
+        let view=match Timing_intent_evidence.inspect ~directory () with Ok v -> v | Error e -> invalid_arg ("Linked timing flow audit: "^e) in
         let provenance=get view "provenance" in
         require (get provenance "schema"=`Int 2 && get provenance "build_identity"=get request "build_identity" &&
           get provenance "audit_id"=get request "analysis_id" && get provenance "corner"=`String corner) "native audit context mismatch";
@@ -357,7 +357,7 @@ let inspect_impl ?named ~run_dir ~context () =
           "executed corner script differs from retained source";
         let liberty_sources=List.filter (fun source -> get source "role"=`String "liberty") (list (get view "sources")) in
         let libraries=match get native_inputs "libraries" with `List xs -> xs
-          | _ -> invalid_arg "PT7 flow: actual Liberty association is missing/incomplete" in
+          | _ -> invalid_arg "Linked timing flow: actual Liberty association is missing/incomplete" in
         require (libraries<>[] && List.length libraries<=64 && List.length libraries=List.length liberty_sources)
           "actual Liberty association is missing/incomplete";
         let library_paths=List.map2 (fun association source ->
@@ -370,7 +370,7 @@ let inspect_impl ?named ~run_dir ~context () =
           let actual=historical_path (get association "actual_path") in
           require (actual=executed relative) "actual Liberty path differs from retained copy";actual) libraries liberty_sources in
         let raw_libraries=match get native_inputs "_CURRENT_CORNER_LIBS" with `String s -> s
-          | _ -> invalid_arg "PT7 flow: actual native Liberty list is not a string" in
+          | _ -> invalid_arg "Linked timing flow: actual native Liberty list is not a string" in
         require (tcl_paths raw_libraries=library_paths)
           "actual native Liberty list differs from retained library associations";
         let args=list (get process "argv") in

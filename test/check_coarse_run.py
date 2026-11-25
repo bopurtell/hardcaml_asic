@@ -70,7 +70,7 @@ if name=='docker' and ('iverilog' in a or 'vvp' in a):
 
 def suite(cli, package, public, consumer=None):
     sys.path.insert(0, str(package.parent))
-    from hardcaml_asic_flow import phase4, cli as public_cli, execution_plan, ocaml_backend, runtime_contract
+    from hardcaml_asic_flow import coarse_flow_oracle, cli as public_cli, execution_plan, ocaml_backend, runtime_contract
     with tempfile.TemporaryDirectory(prefix='coarse run ') as tmp:
         root = Path(tmp); bin = root/'bin'; bin.mkdir()
         (bin/'dirname').symlink_to(shutil.which('dirname'))
@@ -90,7 +90,7 @@ def suite(cli, package, public, consumer=None):
         pdk = root/'pdk'; pdk.mkdir()
         manifest = dict(schema_version=1,adapter='LibreLane',identity='build-fixture',top_module='top',
             requested_tools=dict(python='3.11',librelane='3.1.0.dev3',support_tools_revision='revision',pdk_revision='revision'),
-            files=[dict(path='src/config.json',sha256=phase4.digest(bundle/'src/config.json'))],
+            files=[dict(path='src/config.json',sha256=coarse_flow_oracle.digest(bundle/'src/config.json'))],
             target=dict(technology='tech',external_references=[dict(source='Support_tools',role='test',path='collateral')]))
         policy=runtime_contract.policy_from_requested(manifest['requested_tools'])
         policy['implementation']['dockerized'].update(policy='official-librelane-image',
@@ -114,11 +114,11 @@ def suite(cli, package, public, consumer=None):
                 old = os.environ.copy()
                 try:
                     os.environ.clear(); os.environ.update(env)
-                    expected = phase4.run(SimpleNamespace(bundle=bundle,runs=root/'legacy',stage=stage,
+                    expected = coarse_flow_oracle.run(SimpleNamespace(bundle=bundle,runs=root/'legacy',stage=stage,
                         support_tools=tools,pdk_root=pdk,python=bin/'python',native=native,allow_python_mismatch=False))
                 finally:
                     os.environ.clear(); os.environ.update(old)
-                legacy = phase4.read_json(expected.run_record)
+                legacy = coarse_flow_oracle.read_json(expected.run_record)
                 # Names, clocks and attempt paths are intentionally fresh. All other
                 # persisted fields are the actual Python producer's contract.
                 for key in ('schema_version','execution_binding_required','build_identity','bundle','manifest_sha256',
@@ -135,7 +135,7 @@ def suite(cli, package, public, consumer=None):
                     assert '--cpus=20' in record['commands'][0]
                     assert record['container_cleanup'][-1]['status']=='removed-or-absent'
                 # Failed runs are retained and accepted by the existing collector.
-                phase4.collect(Path(outcome['run_dir']))
+                coarse_flow_oracle.collect(Path(outcome['run_dir']))
                 count += 1
         # Explicit checked coarse plans and lexical interpreter aliases.
         plan = root/'plan.json'; plan.write_text(json.dumps(execution_plan.resolve('synthesis').as_dict()))
@@ -386,9 +386,9 @@ def suite(cli, package, public, consumer=None):
             os.environ.clear(); os.environ.update(env)
             o=public_cli.Operations().run(SimpleNamespace(bundle=bundle,runs=root/'callback',stage='synthesis',
                 support_tools=tools,pdk_root=pdk,python=bin/'python',native=True))
-            assert isinstance(o,phase4.RunOutcome) and o.as_dict()['status']=='completed'
+            assert isinstance(o,coarse_flow_oracle.RunOutcome) and o.as_dict()['status']=='completed'
         finally: os.environ.clear(); os.environ.update(old)
-        # Authoritative resolution: missing selected helper fails, never phase4 fallback.
+        # Authoritative resolution: missing selected helper fails, never coarse_flow_oracle fallback.
         original_binary=ocaml_backend.binary
         try:
             ocaml_backend.binary=lambda _: (_ for _ in ()).throw(OSError('missing authoritative helper'))

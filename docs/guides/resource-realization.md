@@ -47,7 +47,7 @@ resolved implementation used to render the bundle. Historical manifests without
 it remain readable through an explicitly labeled legacy inventory adapter.
 `Chip_target.prepare_resources` and `Methodology_plan.prepare` are different APIs:
 neither shared names nor similar inventories prove that a separately retained
-PT.4 attempt produced a bundle. `preparation_link` currently remains unavailable.
+preparation attempt produced a bundle. `preparation_link` currently remains unavailable.
 
 ## Collection, acceptance and archives
 
@@ -139,14 +139,7 @@ this feature does not add named-flow macro/checkpoint execution support.
 
 ## Validated example
 
-From `hardcaml_asic_example`, using its isolated PT.5b capture:
-
-```sh
-P="$PWD/.dev/asic-pt5b/current/bin/hardcaml-asic-flow"
-"$P" resources-inspect acceptance/sram/8b48d7d0-functional --json
-"$P" resources-inspect acceptance/sram/physical-p4 --json
-"$P" resources-inspect acceptance/resource-measurements/accepted-live-01/run --json
-```
+The following illustrates the measurement boundary on a stock SRAM specimen. Use `resources-inspect` with your own retained run as shown above.
 
 The synthesis specimen reports 176 total cells: **175 standard cells + one SRAM**.
 Its standard-cell area is **2,182.7232 µm²**, bound macro Liberty area
@@ -177,13 +170,9 @@ yielding **186 linked sampled paths / 372 electrical observations**. For example
 - Fast hold, `_203_/Q` → macro `A_ADDR[6]`: slack **0.223533 ns**,
   macro input slew **0.167545 ns**; its blank Cap field remains null.
 
-Original `physical-p4` has no raw STA reports, so its resource timing still stays
-unavailable; the inspector does not borrow reports from the new capture. All old
-evidence and app-provider selections remain preserved.
+The original physical snapshot has no raw STA reports, so its resource timing still stays
+unavailable; the inspector does not borrow reports from the new capture.
 
-See the [PT.5b closeout](../development/resource-measurements-plan.md#implementation-and-acceptance-closeout),
-[original reconciliation record](../development/resource-realization-plan.md#implementation-and-review-closeout-2026-10-27)
-and [measurement acceptance guide](../../../hardcaml_asic_example/docs/resource_measurements.md)
-for identities, negative fixtures and limits. The old physical qualification
+The original physical qualification
 remains unchanged: raw Magic=3 with exact disposition, abstract macro-boundary LVS,
 and no new timed-model/IR-EM claim.

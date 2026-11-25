@@ -209,7 +209,7 @@ if ENGINE:
     runtime(engine_root, read(engine_root / "project/runs/asic/resolved.json"), os.environ.get("PT7_TEST_MODE", "good"))
     sys.exit(0)
 
-with tempfile.TemporaryDirectory(prefix="pt7 ordinary [labels] $root ") as tmp:
+with tempfile.TemporaryDirectory(prefix="linked timing ordinary [labels] $root ") as tmp:
     tmp = Path(tmp)
     bundle = tmp / "bundle"
     call([EMITTER, bundle])
@@ -630,4 +630,4 @@ print(json.dumps(value))
     finally:
         os.environ["PATH"] = old_path
 
-print(f"PT7 ordinary flow: {checks} public/orchestration/replay checks passed; synthetic native boundary, no EDA")
+print(f"Linked timing flow: {checks} public/orchestration/replay checks passed; synthetic native boundary, no EDA")

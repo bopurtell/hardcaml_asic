@@ -1,6 +1,6 @@
 # Declare and inspect narrow timing intent
 
-PT.7 extends the existing `Timing` declaration and generated bundle SDC. The first
+Timing intent extends the existing `Timing` declaration and generated bundle SDC. The first
 qualified subset is scalar synchronizer stages, one rising primary `clk`, exact
 input bits/scalars, and selected CMOS5L mapped reset flops. It does not insert
 registers or alter latency/reset behavior.
@@ -46,8 +46,6 @@ checks at those asynchronous controls; it is not proof that reset release is saf
 Downstream data paths and other reset fanout are outside that scope. Review reset
 protocol and recovery/removal assumptions before adopting a waiver.
 
-See the complete public consumer in
-[`timing/timing_project.ml`](../../../hardcaml_asic_example/timing/timing_project.ml).
 No CDC, bus-coherence or metastability adequacy is inferred from these declarations.
 
 ## Exact mapped resolution
@@ -92,10 +90,7 @@ The corresponding API is
 Both readers probe no PDK, run no tools and rewrite no evidence. Capabilities
 `timing_intent_evidence1`, `timing_intent_evidence2` and `timing_intent_flow1`
 advertise the supported boundaries. Named executions use the separate `execution`
-kind below; checkpoints are not inspection targets. Required sources and bounds are in
-the [original schema-1 contract](../development/pt7-evidence-handoff.md),
-[native contract](../development/pt7c-native-handoff.md) and
-[coarse integration contract](../development/pt7c-flow-handoff.md).
+kind below; checkpoints are not inspection targets.
 
 Inspection verifies build identity, selected bundle-envelope cross-links, complete
 SDC hash, exact build/audit/stage/producer/corner and source hashes. It separates
@@ -144,8 +139,8 @@ rewritten or upgraded merely by inspecting it.
 
 ## Ordinary synthesis integration
 
-New timing-intent bundles contain identity-covered
-`constraints/pt7-native-coverage.tcl`. For a **macro-free coarse synthesis** run,
+New timing-intent bundles contain an identity-covered native coverage producer
+declared by the manifest's `timing_native_coverage` field. For a **macro-free coarse synthesis** run,
 the provider automatically follows completed synthesis with a separate linked
 `OpenROAD.STAPrePNR` Step invocation. It consumes the exact retained synthesis
 state/netlist, resolved configuration, unmodified emitted SDC and native producer;
@@ -183,7 +178,7 @@ report may exit 0 while timing inspection exits 1/unavailable: neither proves ti
 closure. Use `collect --stdout` for read-only collection of historical evidence.
 
 Archives replay with the original PDK/source/provider checkout hidden, using retained
-bytes and a compatible installed reader. See the flow handoff for restoration layout.
+bytes and a compatible installed reader. See [archive restoration](flow.md#archiving-and-restoring-evidence).
 
 ## Opt-in all-corner synthesis and coarse physical qualification
 
@@ -191,8 +186,7 @@ bytes and a compatible installed reader. See the flow handoff for restoration la
 identity-covered physical-v2 resolution policy and all-configured analysis request.
 Use a resolved Synthesis project for the pre-PNR baseline and a resolved Hardening
 project for full execution. Default rendering, including default Hardening rendering,
-does not silently enable this contract. The independent public consumer is
-[`physical_timing/`](../../../hardcaml_asic_example/physical_timing/).
+does not silently enable this contract.
 
 Physical-v2 preserves direct architectural declarations while accepting up to eight
 checked noninverting buffer/delay hops on supported physical connections, including
@@ -239,9 +233,7 @@ using one nominal extracted RC view**. Five flops remain; native post-CTS repair
 added nine delay cells. Worst hold is +0.102353 / +0.276686 / +0.590927 ns, with
 unchanged 20 ns clock, 0.25 ns uncertainty, derates and I/O budgets. Physical checks,
 nine TT checks, 512 functional observations and hidden-original-source archive replay
-pass. [Actual result](../../../hardcaml_asic_example/docs/timing_physical_full_result.md),
-[implementation/limits](../development/timing-physical-qualification.md),
-[independent review](../development/timing-physical-final-review.md).
+pass.
 
 The executed six-worker allocation was respected. Dedicated all-corner/linked STA
 used one thread; three repeated mid-PNR OpenROAD STA occurrences requested six.
@@ -286,41 +278,27 @@ files. Hashing is bounded and streaming; aliases retain separate accounting.
 
 **Named evidence remains path-bound.** The source inventory does not establish named
 archive/export or relocated runnable checkpoints. Readers recheck recorded paths,
-without discovering a replacement PDK. See the
-[named contract](../development/pt7-named-synthesis.md).
+without discovering a replacement PDK.
 
 ## Accepted boundary
 
-The [fresh example r3 evidence](../../../hardcaml_asic_example/docs/pt7_timing_final.md)
-and [independent review](../development/pt7-final-review.md) demonstrate actual
+A synthesis qualification demonstrates actual
 Yosys mapping and OpenSTA consumption of unmodified bundle SDC for scalar and bit
 sources. Five original stages survive. Three downstream setup/hold path samples
 remain timed, with setup **+19.432287 ns** and hold **−0.044244 ns (violated)**.
 This is sampled timing preservation, not closure. Graph and provenance negatives
 have passing positive controls and retained intended diagnostics.
 
-The [PT.7c native-v2 coarse acceptance](../../../hardcaml_asic_example/docs/pt7c_native_v2_final.md)
-adds actual ordinary-flow production, native stored-state/diagnostic interpretation,
-and public archive/restore. The
-[final reader correction](../../../hardcaml_asic_example/docs/pt7c_reader_r1b_final.md)
-replays those unchanged products with a separately identified corrected inspector.
-[Independent review](../development/pt7c-final-review.md) verifies exact inputs,
-processes, library associations, native controls and hidden-source replay. The five
+A native coarse qualification adds actual ordinary-flow production, native stored-state/diagnostic interpretation and public archive/restore. The five
 original flops, six stored relations, seven categories and 12 endpoints are explicit.
 Downstream hold remains −0.044244 ns; other native min samples reach −0.243063 ns.
 
-The [named area/delay acceptance](../../../hardcaml_asic_example/docs/pt7named_native_final.md)
-and [independent review](../development/pt7-named-final-review.md) add two real named
-executions, unchanged checkpoints and exact report/inspection parity. Each retains
-1584 sources and 1062 alias proofs. A final
-[reader correction](../../../hardcaml_asic_example/docs/pt7named_reader_r4_final.md)
-replays both unchanged runs with frozen external pins enforced.
+Two real named executions established unchanged checkpoints and exact report/inspection parity. Each retains 1584 sources and 1062 alias proofs; readers enforce frozen external pins.
 
 The separate coarse physical follow-up above now qualifies this exact example at
 the three supported cell-PVT corners and nominal RC view; original negative
 synthesis/named reports remain historical failures, not relabelled physical results.
 
 Exhaustive effects/per-check coverage, named archives/physical execution, other RC
-views/designs, reset-effect/adequacy qualification and consumer-specific review remain in the
-[PT.7 queue](../phase_plan.md#pt7--synchronizerreset-aware-timing-declarations).
+views/designs, reset-effect/adequacy qualification and consumer-specific review remain outside the qualified scope.
 No historical SRAM run proves these new declarations were applied.

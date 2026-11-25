@@ -76,7 +76,7 @@ module Config = struct
     then
       raise_s
         [%message
-          "v0.1 implements [read_latency = 1] only; see docs/program-memory-contract.md"
+          "v0.1 implements [read_latency = 1] only; see docs/reference/program-memory-contract.md"
             (read_latency : int)];
     { width; depth; read_latency }
   ;;
@@ -306,7 +306,7 @@ let create
   let instance = Resource.Id.create_exn ~path ~name in
 
   (* Raise if [signal] is not [expected] bits wide *)
-  (* TODO (future fix): the message does not follow docs/development/comment_guidelines.md section 9,
+  (* TODO (future fix): the message does not follow the structured diagnostic convention,
      which wants "what went wrong; how to fix it". Something like "single-port RAM port
      width mismatch; size the port to match the config". Changing it changes expect test
      output, so update those in the same commit; *)

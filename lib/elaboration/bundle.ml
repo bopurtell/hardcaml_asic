@@ -19,7 +19,7 @@
    It does NOT validate the design, the target or the settings; Elaboration.Resolved
    already did, and this module leans on those guarantees (one clock on "clk", nonempty
    views, no override of a generated setting). It does NOT run any EDA tool, touch the PDK
-   or link the TT support-tools checkout at OUTPUT/tt; running the flow is P4 work. Layout
+   or link the TT support-tools checkout at OUTPUT/tt; running the flow is execution work. Layout
    and manifest fields are described in docs/guides/bundle-emission.md.
 *)
 
@@ -186,7 +186,7 @@ let sexp to_sexp value = string (Sexp.to_string_hum (to_sexp value))
    git's own stderr is not captured; it goes straight to the process stderr.
 
    TODO (future fix): the failure message formats [args] into the string instead of
-   attaching them as [%message] fields, against docs/development/comment_guidelines.md section 9, and
+   attaching them as [%message] fields, against the structured diagnostic convention, and
    it drops the exit status; see [read_input] for the other messages in this file;
 *)
 let run_git root args =
@@ -244,7 +244,7 @@ let valid_path path =
    ("escapes source root") would be misleading if they did.
 
    TODO (future fix): these messages, [run_git]'s and [write]'s format paths into the
-   string rather than attaching [%message] fields (docs/development/comment_guidelines.md section 9).
+   string rather than attaching [%message] fields (the structured diagnostic convention).
    test/check_bundle.py matches "source input is missing" in stderr, so change that
    assertion in the same commit;
 *)
@@ -663,7 +663,7 @@ let render
   (* TODO (possible optimization): this check runs after both RTL sets are generated; it
      could move to the top, since it needs nothing computed above; *)
    (* TODO (future fix): this message and the simulation project one above use
-     error_string with no fix, against docs/development/comment_guidelines.md section 9; see
+     error_string with no fix, against the structured diagnostic convention; see
      [read_input] for the other messages in this file; *)
   let%bind.Or_error () =
     if List.is_empty input_paths
@@ -756,7 +756,7 @@ let render
      operation; if views ever come from different PDK revisions, only the first is kept.
 
      librelane and python are the versions the bundle asks for, NOT versions that ran;
-     run records are P4 (docs/guides/bundle-emission.md);
+     run records belong to execution (docs/guides/bundle-emission.md);
   *)
   let payload =
     assoc

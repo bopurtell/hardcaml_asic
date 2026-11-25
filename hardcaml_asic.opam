@@ -9,11 +9,12 @@ Project elaboration, registered resources, and TT/LibreLane bundle emission, ins
 Host requirements beyond the OCaml dependencies: Python 3.9 or newer for the flow command, and a POSIX shell. Provisioning additionally needs Bash, Git and the usual Unix utilities; running and postchecking a design need Docker, LibreLane and Nix. None of those are fetched by installing this package, and the record operations -- version, help, collect, report, archive -- need none of them."""
 maintainer: ["Bohdan Purtell <bohdanpurtell@gmail.com>"]
 authors: ["Bohdan Purtell <bohdanpurtell@gmail.com>"]
-homepage: "https://github.com/LeEmperor/hardcaml_asic"
-bug-reports: "https://github.com/LeEmperor/hardcaml_asic/issues"
+license: "MIT"
+homepage: "https://github.com/bopurtell/hardcaml_asic"
+bug-reports: "https://github.com/bopurtell/hardcaml_asic/issues"
 depends: [
+  "dune" {>= "3.17"}
   "ocaml" {>= "5.1"}
-  "dune" {>= "3.17" & >= "3.17"}
   "core"
   "hardcaml"
   "yojson"
@@ -40,4 +41,4 @@ build: [
     "@doc" {with-doc}
   ]
 ]
-dev-repo: "git+https://github.com/LeEmperor/hardcaml_asic.git"
+dev-repo: "git+https://github.com/bopurtell/hardcaml_asic.git"

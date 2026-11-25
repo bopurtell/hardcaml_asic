@@ -6,7 +6,7 @@ No installation, dependency downloads, provisioning or physical/synthesis EDA.
 Provider checks retain normal PATH tool selection, including available RTL simulators.
 Git mutations are confined to temporary fixtures; all commits use Bundle test identity.
 Includes exact publication reuse/collisions, failed-write cleanup, two independent
-processes racing after rendering, and phase-4/archive root-link compatibility.
+processes racing after rendering, and coarse flow/archive root-link compatibility.
 """
 
 import argparse
@@ -195,19 +195,19 @@ def publication_checks(executable, source, root, env, repo):
                 process.kill()
             process.communicate()
 
-    # Actual phase-4 run entry canonicalizes the root before preflight. Rejecting
+    # Reference coarse run entry canonicalizes the root before preflight. Rejecting
     # preflight exercises that entry without any external tool/PDK invocation.
     sys.path.insert(0, str(repo / "flow"))
-    from hardcaml_asic_flow import archive, phase4
+    from hardcaml_asic_flow import archive, coarse_flow_oracle
     args = SimpleNamespace(bundle=destination, runs=root / "runs", stage="synthesis",
                            support_tools=root / "tools", pdk_root=root / "pdk",
                            python=Path(sys.executable), allow_python_mismatch=False, native=True)
     def preflight(bundle, *_args):
         assert bundle == destination.resolve() and not bundle.is_symlink()
         return {"ready": False, "issues": ["fixture stops before EDA"]}
-    with mock.patch.object(phase4, "preflight", side_effect=preflight):
-        outcome = phase4.run(args)
-    record = phase4.read_json(outcome.run_record)
+    with mock.patch.object(coarse_flow_oracle, "preflight", side_effect=preflight):
+        outcome = coarse_flow_oracle.run(args)
+    record = coarse_flow_oracle.read_json(outcome.run_record)
     assert record["bundle"] == str(destination.resolve())
     kind, selected, value, files = archive.bundle_source(outcome.run_dir, record)
     assert kind == "original" and selected == destination.resolve()
@@ -219,7 +219,7 @@ def publication_checks(executable, source, root, env, repo):
     assert invoke(store)["reused"]
     assert snapshot(store) == original_store
     print("publication: exact/no-op reuse, preserved collisions, failed-write cleanup, "
-          "real-process race and phase-4/archive root-link compatibility pass")
+          "real-process race and coarse flow/archive root-link compatibility pass")
 
 
 def main():

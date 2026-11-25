@@ -95,7 +95,7 @@ def inspect(root, name, mutate=lambda _: None, receipt_change=lambda r: r, expec
     return usage.ru_maxrss
 
 
-with tempfile.TemporaryDirectory(prefix="pt7-evidence-regression-") as temp:
+with tempfile.TemporaryDirectory(prefix="timing-evidence-regression-") as temp:
     root = Path(temp)
     rss = inspect(root, "baseline")
     inspect(root, "producer-order", receipt_change=lambda r: dict(r, producer=dict(reversed(list(r["producer"].items())))))
