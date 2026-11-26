@@ -8,6 +8,9 @@ and retaining integrity-checked results. `hardcaml_asic` is an independent
 [MIT-licensed](LICENSE) project built on Hardcaml; it is not developed or
 maintained by Jane Street. No hardware workbench is required.
 
+[Online documentation](https://bopurtell.github.io/clockmaker-docs/hardcaml-asic/) ·
+[Local documentation](docs/README.md)
+
 ## Quick start
 
 ### 1. Install the prerequisites and clone
