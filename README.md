@@ -1,5 +1,7 @@
 # hardcaml_asic
 
+[![Native build and tests (oxcaml)](https://github.com/bopurtell/hardcaml_asic/actions/workflows/ci.yml/badge.svg?branch=oxcaml)](https://github.com/bopurtell/hardcaml_asic/actions/workflows/ci.yml?query=branch%3Aoxcaml)
+
 An OCaml/Hardcaml library and command-line toolkit for declaring ASIC chip targets,
 emitting immutable implementation inputs, running an open-source physical flow,
 and retaining integrity-checked results. `hardcaml_asic` is an independent
@@ -140,6 +142,7 @@ rendering, writing and registering targets and IP libraries.
 ## Documentation
 
 - [Documentation index](docs/README.md)
+- [Running native CI and comparing cache timings](docs/development.md)
 - [Standalone FIFO and SRAM examples](https://github.com/bopurtell/hardcaml_asic_example/tree/oxcaml)
 - [End-to-end user workflow](docs/guides/usage.md)
 - [Consumer installation](docs/guides/consumer-installation.md) and [toolchain provisioning](docs/guides/bootstrap.md)

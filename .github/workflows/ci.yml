@@ -1,0 +1,125 @@
+name: Hardcaml ASIC native CI
+
+on:
+  pull_request:
+    branches:
+      - oxcaml
+  push:
+    branches:
+      - oxcaml
+  workflow_dispatch:
+    inputs:
+      cold:
+        description: Benchmark a cold provisioning (skip cache restore and save)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+# Only runs for the same PR supersede each other.
+concurrency:
+  group: ${{ github.event_name == 'pull_request' && format('asic-native-pr-{0}', github.event.pull_request.number) || format('asic-native-run-{0}-{1}', github.run_id, github.run_attempt) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  native:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      # Match Silver's native CI image and platform.
+      UBUNTU_IMAGE: ubuntu:26.04@sha256:d66b366dac61b575bee2aef07e9c26e8070096fbe84a3d4d3eb0da069b5d76db
+      PLATFORM: linux/amd64
+      SEGMENT_DOWNLOAD_TIMEOUT_MINS: 30
+    steps:
+      - name: Check out the selected revision
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Exercise cold and warm provisioning decisions
+        run: python3 -B scripts/ci/test_cache.py
+      - name: Make room for the cold OxCaml build
+        shell: bash
+        run: |
+          df -h /
+          # These SDKs are unused on the disposable GitHub-hosted runner.
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc
+          df -h /
+      - name: Set up the native container and calculate the exact toolchain key
+        id: setup
+        shell: bash
+        run: |
+          TIMEFORMAT='Elapsed: %3R seconds'
+          mkdir "$RUNNER_TEMP/asic-ci-data"
+          docker run --detach --name asic-native-ci --platform "$PLATFORM" \
+            --volume "$PWD:/checkout:ro" --workdir /checkout \
+            --volume "$RUNNER_TEMP/asic-ci-data:/home/asic-ci/.local/share" \
+            --env ASIC_CI_UID="$(id -u)" --env ASIC_CI_GID="$(id -g)" \
+            --env ASIC_BUILD_JOBS=2 --env ASIC_TEST_JOBS=1 \
+            "$UBUNTU_IMAGE" sleep infinity
+          time docker exec asic-native-ci bash scripts/ci/container.sh setup
+          # Include the installed host package versions: apt repositories can
+          # change independently of the pinned container image.
+          host_packages=$(docker exec asic-native-ci dpkg-query -W \
+            -f='${Package}\t${Architecture}\t${Version}\n' | LC_ALL=C sort | sha256sum)
+          fingerprint=$(
+            {
+              printf '%s\n' "$UBUNTU_IMAGE" "$PLATFORM" "$(id -u):$(id -g)" \
+                /home/asic-ci/.local/share/asic "$host_packages"
+              sha256sum .github/workflows/ci.yml scripts/ci/container.sh scripts/ci/check.sh \
+                scripts/ci/toolchain.env scripts/ocaml-deps.sh \
+                dune-project hardcaml_asic.opam toolchain.lock
+            } | sha256sum | cut -d ' ' -f1
+          )
+          echo "key=asic-native-v1-linux-amd64-$fingerprint" >> "$GITHUB_OUTPUT"
+          echo "restore_start=$(date +%s)" >> "$GITHUB_OUTPUT"
+      - name: Restore exact managed toolchain
+        id: restore
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.cold) }}
+        continue-on-error: true
+        uses: actions/cache/restore@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: ${{ runner.temp }}/asic-ci-data/asic
+          key: ${{ steps.setup.outputs.key }}
+      - name: Provision or verify the managed toolchain
+        shell: bash
+        env:
+          ASIC_CACHE_KEY: ${{ steps.setup.outputs.key }}
+          ASIC_CACHE_HIT: ${{ steps.restore.outcome == 'success' && steps.restore.outputs.cache-hit == 'true' }}
+          RESTORE_START: ${{ steps.setup.outputs.restore_start }}
+          RESTORE_OUTCOME: ${{ steps.restore.outcome }}
+        run: |
+          TIMEFORMAT='Elapsed: %3R seconds'
+          echo "Cache restore: $RESTORE_OUTCOME; exact hit: $ASIC_CACHE_HIT; $(($(date +%s) - RESTORE_START))s; $ASIC_CACHE_KEY"
+          if [[ "$ASIC_CACHE_HIT" != true ]]; then
+            # Remove any partial extraction from this disposable cache path.
+            if [[ -d "$RUNNER_TEMP/asic-ci-data/asic" ]]; then
+              chmod -R u+rwX "$RUNNER_TEMP/asic-ci-data/asic"
+            fi
+            rm -rf -- "$RUNNER_TEMP/asic-ci-data/asic"
+          fi
+          time docker exec --env ASIC_CACHE_KEY --env ASIC_CACHE_HIT \
+            asic-native-ci bash scripts/ci/container.sh provision
+      # Save before application builds/tests. PRs may restore the base branch's
+      # cache; only trusted oxcaml runs publish it.
+      - name: Save successfully provisioned managed toolchain
+        if: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/oxcaml' && !(github.event_name == 'workflow_dispatch' && inputs.cold) && !(steps.restore.outcome == 'success' && steps.restore.outputs.cache-hit == 'true') }}
+        uses: actions/cache/save@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: ${{ runner.temp }}/asic-ci-data/asic
+          key: ${{ steps.setup.outputs.key }}
+      - name: Build and test native Hardcaml ASIC
+        shell: bash
+        env:
+          ASIC_CACHE_KEY: ${{ steps.setup.outputs.key }}
+          ASIC_CACHE_HIT: ${{ steps.restore.outcome == 'success' && steps.restore.outputs.cache-hit == 'true' }}
+        run: |
+          TIMEFORMAT='Elapsed: %3R seconds'
+          time docker exec --env ASIC_CACHE_KEY --env ASIC_CACHE_HIT \
+            asic-native-ci bash scripts/ci/container.sh test
+      - name: Remove the native container
+        if: always()
+        run: docker rm -f asic-native-ci || true
+      - name: Report remaining runner disk space
+        if: always()
+        run: df -h /

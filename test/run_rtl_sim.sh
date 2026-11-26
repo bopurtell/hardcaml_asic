@@ -8,7 +8,7 @@ fi
 
 output_dir=$1
 mkdir -p "$output_dir"
-dune exec -j 20 examples/memory_example.exe -- --rtl "$output_dir/memory_example.v"
+dune exec -j "${ASIC_BUILD_JOBS:-20}" examples/memory_example.exe -- --rtl "$output_dir/memory_example.v"
 iverilog_bin=${IVERILOG_BIN:-iverilog}
 vvp_bin=${VVP_BIN:-vvp}
 if [ -n "${IVERILOG_BASE:-}" ]; then
