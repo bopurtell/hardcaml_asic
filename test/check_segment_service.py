@@ -20,7 +20,8 @@ def verify(consumer, service, package, root, fixture, engine):
     sys.path.insert(0, str(package))
     from hardcaml_asic_flow import checkpoint as cp, backend_protocol as protocol, execution_plan as ep
     count = 0
-    runtime_file = next(p for p in Path("/nix/store").iterdir() if p.is_file())
+    runtime_file = root / "runtime-input"
+    runtime_file.write_text("fixture image input")
     serial = 0
 
     def prepared(mode="success", image_closure=False):

@@ -181,6 +181,17 @@ def run(bridge, request_path):
     spec = importlib.util.spec_from_file_location("actual_bridge", bridge)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    if runtime_file := os.environ.get("BRIDGE_FIXTURE_RUNTIME_FILE"):
+        # The fake engine shares the host filesystem. Measure the fixture bytes
+        # normally, but expose their image-only name to the checkpoint publisher.
+        measure_closure = module.closure
+
+        def image_closure(config, project, pdk_root):
+            records = measure_closure(config, project, pdk_root)
+            records["/nix/store/fixture-runtime"] = records.pop(runtime_file)
+            return records
+
+        module.closure = image_closure
     sys.argv = [str(bridge), str(request_path)]
     module.main()
 

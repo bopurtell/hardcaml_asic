@@ -131,7 +131,9 @@ class DefaultJournalTest(unittest.TestCase):
                 fixture = Fixture(tmp)
                 fixture.env[setting] = "10" if setting.endswith("SLEEP") else "17"
                 if setting == "SERVICE_VALIDATION_EXIT":
-                    fixture.env["BRIDGE_FIXTURE_RUNTIME_FILE"] = str(next(p for p in Path("/nix/store").iterdir() if p.is_file()))
+                    runtime_file = Path(tmp) / "runtime-input"
+                    runtime_file.write_text("fixture image input")
+                    fixture.env["BRIDGE_FIXTURE_RUNTIME_FILE"] = str(runtime_file)
                 result = fixture.invoke([*fixture.command(), "--json"])
                 self.assertEqual(result.returncode, 2, result.stderr)
                 allocation, execution = map(json.loads, result.stdout.splitlines())
@@ -141,6 +143,9 @@ class DefaultJournalTest(unittest.TestCase):
                 state = obs.inspect(allocation["attempt"])
                 self.assertEqual(state["state"]["outcome"]["exit_code"], 2)
                 calls = [json.loads(line) for line in (Path(tmp) / "engine-events.jsonl").read_text().splitlines()]
+                if setting == "SERVICE_VALIDATION_EXIT":
+                    self.assertTrue(any(call[0] == "run" and "validate-" in Path(call[-1]).name
+                                        for call in calls), calls)
                 self.assertTrue(any(call[:2] == ["rm", "-f"] for call in calls))
                 for call in calls:
                     if call[0] == "run":
